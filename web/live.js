@@ -53,6 +53,37 @@
   els.stopBtn.addEventListener("click", () => stopCapture({ offerDiscard: true }));
   els.discardBtn.addEventListener("click", () => discardSession().catch(onFatal));
 
+  const typeForm = document.getElementById("typeForm");
+  const typeInput = document.getElementById("typeInput");
+  if (typeForm && typeInput) {
+    typeForm.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const text = typeInput.value.trim();
+      if (!text || !state.sessionId || state.stopped) {
+        toast("Start a live session first, then type a line.");
+        return;
+      }
+      injectCaption(text);
+      typeInput.value = "";
+    });
+  }
+
+  function injectCaption(text) {
+    const t = (performance.now() - state.startedAt) / 1000;
+    state.finals.push({ t, text });
+    renderTranscript();
+    els.interim.textContent = "";
+    api
+      .postCaption(state.sessionId, {
+        t_start: Math.max(0, t - 2),
+        t_end: t,
+        text,
+      })
+      .catch(onFatal);
+    // Kick analyze immediately so you don't wait for the 3s loop
+    tickAnalyze().catch(onFatal);
+  }
+
   api
     .health()
     .then((h) => {
@@ -344,6 +375,14 @@
     rec.onerror = (ev) => {
       if (ev.error === "no-speech" || ev.error === "aborted") return;
       console.warn("[speech]", ev.error);
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        els.chromeWarn.classList.add("visible");
+        els.chromeWarn.textContent =
+          "Speech blocked — use Google Chrome, allow microphone, or type a line below to test.";
+        toast("Speech recognition blocked. Type a caption below to test analyze.");
+      } else if (ev.error === "network") {
+        toast("Speech needs network (Chrome → Google STT). Type a line below to test offline-ish.");
+      }
     };
 
     rec.onend = () => {

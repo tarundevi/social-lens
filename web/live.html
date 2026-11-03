@@ -196,9 +196,13 @@
       </div>
       <div class="panel">
         <h3>Transcript (rolling 30s)</h3>
-        <div id="chromeWarn">Speech recognition needs Chrome (webkitSpeechRecognition).</div>
+        <div id="chromeWarn">Speech recognition needs Google Chrome (not Safari / Arc / Cursor browser).</div>
         <div id="transcript"></div>
         <div id="interim"></div>
+        <form id="typeForm" style="display:flex;gap:0.4rem;margin-top:0.6rem">
+          <input id="typeInput" type="text" placeholder="Type a line + Enter to test (if speech fails)" style="flex:1;padding:0.45rem 0.6rem;border-radius:8px;border:1px solid #243044;background:#0b1220;color:#e7ecf3" />
+          <button type="submit" class="secondary">Send</button>
+        </form>
       </div>
     </div>
     <div class="layout" style="margin-top:1rem">
