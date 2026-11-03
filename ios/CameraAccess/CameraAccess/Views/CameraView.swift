@@ -116,7 +116,7 @@ struct CameraView: View {
             .autocorrectionDisabled()
             Toggle("Analyze while streaming", isOn: Binding(
               get: { viewModel.socialLens.isEnabled },
-              set: { viewModel.socialLens.isEnabled = $0 }
+              set: { viewModel.setSocialLensEnabled($0) }
             ))
             Button("Apply URL") {
               viewModel.socialLens.applyBaseURL()

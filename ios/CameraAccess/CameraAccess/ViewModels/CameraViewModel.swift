@@ -102,6 +102,13 @@ final class CameraViewModel {
   /// SocialLens: every-3s analyze loop + TTS for notified cues while streaming.
   let socialLens = SocialLensCueBridge()
 
+  func setSocialLensEnabled(_ enabled: Bool) {
+    socialLens.isEnabled = enabled
+    if enabled && isStreaming {
+      socialLens.start { [weak self] in self?.currentVideoFrame }
+    }
+  }
+
   // MARK: - Derived session state
 
   var isSessionStarting: Bool { sessionState == .starting }

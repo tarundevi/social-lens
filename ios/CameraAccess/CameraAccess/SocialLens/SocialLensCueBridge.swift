@@ -16,7 +16,11 @@ final class SocialLensCueBridge {
   var baseURLString: String {
     didSet { UserDefaults.standard.set(baseURLString, forKey: defaultsKey) }
   }
-  var isEnabled: Bool = true
+  var isEnabled: Bool = true {
+    didSet {
+      if !isEnabled { stop() }
+    }
+  }
   var statusText: String = "SocialLens idle"
   var lastCueText: String = ""
   var lastLatencyMs: Int?
