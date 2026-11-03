@@ -546,9 +546,7 @@ final class CameraViewModel {
     streamState = state
     if state == .streaming {
       // Fresh start if needed; if we only soft-paused, resume the loop.
-      if socialLens.captureActive {
-        socialLens.resumeAnalyzeIfNeeded()
-      } else {
+      if !socialLens.resumeAnalyzeIfNeeded() {
         socialLens.start { [weak self] in self?.currentVideoFrame }
       }
     } else if state == .stopped {

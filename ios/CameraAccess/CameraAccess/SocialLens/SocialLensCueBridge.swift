@@ -70,15 +70,23 @@ final class SocialLensCueBridge {
     loopTask?.cancel()
     loopTask = nil
     isAnalyzing = false
+    captureActive = false
+    speechCapture.stop()
     statusText = "SocialLens paused (stream paused)"
   }
 
-  func resumeAnalyzeIfNeeded() {
-    guard isEnabled, captureActive, frameProvider != nil, loopTask == nil else { return }
+  @discardableResult
+  func resumeAnalyzeIfNeeded() -> Bool {
+    guard isEnabled, frameProvider != nil, loopTask == nil else { return false }
+    captureActive = true
     statusText = "SocialLens resuming…"
+    if let sessionStart {
+      Task { await speechCapture.start(sessionStart: sessionStart, resetTranscript: false) }
+    }
     loopTask = Task { [weak self] in
       await self?.runLoop()
     }
+    return true
   }
 
   func stop(clearSession: Bool = true) {

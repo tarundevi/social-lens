@@ -22,12 +22,13 @@ if [[ -n "${pids}" ]]; then
   echo "Port $PORT in use by: $(ps -p $pids -o args= 2>/dev/null || echo "$pids")"
   if ps -p $pids -o args= 2>/dev/null | grep -q 'uvicorn app.main'; then
     echo "Stopping existing SocialLens uvicorn…"
+    # shellcheck disable=SC2086
+    kill $pids
+    sleep 0.4
   else
-    echo "Stopping conflicting process on $PORT so SocialLens can bind…"
+    echo "Refusing to stop an unrelated process. Set PORT to another value or stop it manually." >&2
+    exit 1
   fi
-  # shellcheck disable=SC2086
-  kill -9 $pids 2>/dev/null || true
-  sleep 0.4
 fi
 
 export XAI_MODEL="${XAI_MODEL:-grok-4.20-0309-non-reasoning}"

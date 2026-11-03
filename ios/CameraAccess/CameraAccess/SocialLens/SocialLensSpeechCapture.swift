@@ -17,25 +17,29 @@ final class SocialLensSpeechCapture {
 
   private var finals: [(t: TimeInterval, text: String)] = []
   private var sessionStart: Date?
+  private var generation = 0
   private(set) var lastError: String?
 
   var isAvailable: Bool { recognizer?.isAvailable == true }
 
-  func start(sessionStart: Date) async {
+  func start(sessionStart: Date, resetTranscript: Bool = true) async {
     stop()
+    let startGeneration = generation
     self.sessionStart = sessionStart
-    finals = []
+    if resetTranscript { finals = [] }
     lastError = nil
 
     let speechStatus = await withCheckedContinuation { (cont: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
       SFSpeechRecognizer.requestAuthorization { cont.resume(returning: $0) }
     }
+    guard generation == startGeneration else { return }
     guard speechStatus == .authorized else {
       lastError = "Speech recognition not authorized"
       return
     }
 
     let micStatus = await AVAudioApplication.requestRecordPermission()
+    guard generation == startGeneration else { return }
     guard micStatus else {
       lastError = "Microphone not authorized"
       return
@@ -69,7 +73,7 @@ final class SocialLensSpeechCapture {
 
     task = recognizer.recognitionTask(with: req) { [weak self] result, error in
       Task { @MainActor in
-        guard let self else { return }
+        guard let self, self.generation == startGeneration else { return }
         if let result {
           let text = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
           if result.isFinal, !text.isEmpty {
@@ -99,6 +103,7 @@ final class SocialLensSpeechCapture {
   }
 
   func stop() {
+    generation += 1
     request?.endAudio()
     task?.cancel()
     task = nil
