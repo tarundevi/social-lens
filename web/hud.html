@@ -18,6 +18,9 @@ const panel = document.getElementById("panel");
 const statusEl = document.getElementById("status");
 const params = new URLSearchParams(location.search);
 const sessionId = params.get("session") || "sample";
+// The sample session only exists as a stored log, so it must be replayed; a live
+// session id (from live.html's HUD link) is mirrored as cues arrive.
+const replay = sessionId === "sample" || params.get("replay") === "1";
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -34,9 +37,9 @@ function handleMessage(msg) {
 // cues live.html shows, and a mock session replays contracts/fixtures/ws_stream.jsonl.
 setStatus(window.SocialLensApi.MOCK ? "mock replay" : `connecting to ${sessionId}…`);
 const handle = window.SocialLensApi.openWs(sessionId, (msg) => {
-  setStatus(window.SocialLensApi.MOCK ? "mock replay" : `session ${sessionId}`);
+  setStatus(window.SocialLensApi.MOCK ? "mock replay" : `${replay ? "replay" : "session"} ${sessionId}`);
   handleMessage(msg);
-});
+}, { replay });
 
 window.addEventListener("beforeunload", () => handle.close());
 </script>

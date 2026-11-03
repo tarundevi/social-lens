@@ -12,7 +12,11 @@
   const API_BASE = (() => {
     if (MOCK) return "";
     if (typeof location === "undefined") return "http://localhost:8000";
-    if (location.port === "8000") return "";
+    // ?api=http://host:port points the page at another backend explicitly.
+    const override = new URLSearchParams(location.search).get("api");
+    if (override) return override.replace(/\/+$/, "");
+    // Same origin when served by uvicorn on :8000 or via a tunnel/HTTPS host (no port).
+    if (location.port === "8000" || location.port === "") return "";
     return "http://localhost:8000";
   })();
 
@@ -153,8 +157,9 @@
   /**
    * Open a session websocket. Returns a handle with .close().
    * In mock mode, replays contracts/fixtures/ws_stream.jsonl using _delay_ms.
+   * opts.replay: ask the server to replay the stored/sample log (API_SPEC.md ?replay=1&speed=).
    */
-  function openWs(id, onMsg) {
+  function openWs(id, onMsg, opts = {}) {
     let closed = false;
     let timer = null;
     let socket = null;
@@ -210,7 +215,9 @@
       API_BASE === ""
         ? location.host
         : API_BASE.replace(/^https?:\/\//, "");
-    const url = `${proto}//${host}/ws/sessions/${encodeURIComponent(id)}`;
+    const base = `${proto}//${host}/ws/sessions/${encodeURIComponent(id)}`;
+    const query = opts.replay ? `?replay=1&speed=${encodeURIComponent(opts.speed ?? 1)}` : "";
+    const url = base + query;
     socket = new WebSocket(url);
     socket.onmessage = (ev) => {
       try {
