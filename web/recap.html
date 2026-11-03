@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SocialLens Recap</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="recap-header">
+  <h1>Catch me up</h1>
+  <button class="recap-btn" id="catchup-btn">Catch me up</button>
+</div>
+<div class="recap-status" id="status"></div>
+<div id="catchup-panel"></div>
+
+<script type="module">
+import { renderRecap, fetchRecap } from "./recap.js";
+
+const params = new URLSearchParams(location.search);
+const sessionId = params.get("session") || "sample";
+const statusEl = document.getElementById("status");
+const panel = document.getElementById("catchup-panel");
+
+document.getElementById("catchup-btn").addEventListener("click", async () => {
+  statusEl.textContent = "Loading catch-me-up…";
+  try {
+    const opts = params.get("mock") === "1" || sessionId === "sample"
+      ? { mockFixtureUrl: "mock/recap.json" }
+      : {};
+    const response = await fetchRecap(sessionId, opts);
+    renderRecap(panel, response);
+    statusEl.textContent = `session: ${sessionId}`;
+  } catch (err) {
+    statusEl.textContent = `catch-me-up failed: ${err}`;
+  }
+});
+</script>
+</body>
+</html>
