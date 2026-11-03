@@ -133,7 +133,7 @@
         els.banner.classList.add("visible");
       } else if (h && h.grok === "missing_key") {
         els.banner.textContent =
-          "Backend is up but XAI_API_KEY is missing — cues will be canned until the key is set in .env.";
+          "Grok not configured (no XAI_API_KEY): use Demo mode below, or set the key in .env for live cues.";
         els.banner.classList.add("visible");
       }
     })

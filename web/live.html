@@ -169,6 +169,7 @@
   <header>
     <h1>SocialLens Live</h1>
     <nav>
+      <a href="#demoSection">Demo mode</a>
       <a href="recap.html">Recap</a>
       <a href="hud.html" id="hudLink">HUD</a>
     </nav>
@@ -193,6 +194,18 @@
     <p style="color:#8b9bb4;font-size:0.85rem;margin:0.75rem 0 0">
       Speech often fails. After start, type in the Transcript box and press Enter — text should appear immediately.
     </p>
+  </section>
+
+  <section id="demoSection" class="panel" style="margin:1rem">
+    <h2>Demo mode (no camera, works without an API key)</h2>
+    <p style="opacity:.75;margin-top:0">Scripted DEMO INPUT scenes. Without a key the cues are canned examples and labeled that way.</p>
+    <div class="layout">
+      <div id="demoMount"></div>
+      <div>
+        <h3>HUD</h3>
+        <div id="demoHud"></div>
+      </div>
+    </div>
   </section>
 
   <main id="app">
@@ -240,6 +253,16 @@
     import { renderHud } from "./hud.js?v=6";
     window.renderHud = renderHud;
     await import("./live.js?v=6");
+    try {
+      const { mountDemo } = await import("./demo.js");
+      const demoEl = document.getElementById("demoMount");
+      const demoHud = document.getElementById("demoHud");
+      demoEl.addEventListener("demo:result", (e) => { if (e.detail?.hud) renderHud(demoHud, e.detail.hud); });
+      mountDemo(demoEl, window.SocialLensApi);
+    } catch (err) {
+      console.error("[SocialLens demo]", err);
+      document.getElementById("demoSection").hidden = true;
+    }
   </script>
 </body>
 </html>
