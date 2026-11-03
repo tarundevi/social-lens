@@ -1,16 +1,16 @@
 # PROGRESS (orchestrator-only file; computers report via PR descriptions)
 
-Last updated: <HH:MM ET> by orchestrator · Minute: <n>/90
+Last updated: 20:18 ET by orchestrator · Minute: integration review
 
 ## Computer 1 (Track A: backend/Grok), branch `c1/backend`
 | Task | Status | PR | Blocker | Updated |
 |---|---|---|---|---|
-| A1 scaffold + health | todo | | | |
-| A2 Grok client | todo | | | |
-| A3 store/dedupe/events | todo | | | |
-| A4 API + WS (+ stub cues) | todo | | | |
-| A5 recap API | todo | | | |
-| A6 tests + latency | todo | | | |
+| A1 scaffold + health | merged | #1 | none | 20:18 ET |
+| A2 Grok client | merged | #1 | none | 20:18 ET |
+| A3 store/dedupe/events | merged | #1 | none | 20:18 ET |
+| A4 API + WS (+ stub cues) | merged | #1 | none | 20:18 ET |
+| A5 recap API | merged | #1 | none | 20:18 ET |
+| A6 tests + latency | merged | #1 | none | 20:18 ET |
 
 ## Computer 2 (Track B: live capture), branch `c2/live`
 | Task | Status | PR | Blocker | Updated |
@@ -25,7 +25,7 @@ Last updated: <HH:MM ET> by orchestrator · Minute: <n>/90
 ## Computer 3 (Track C: HUD + recap), branch `c3/hud-recap`
 | Task | Status | PR | Blocker | Updated |
 |---|---|---|---|---|
-| C1 app/cues.py + tests | todo | | | |
+| C1 app/cues.py + tests | merged | #2 | none | 20:18 ET |
 | C2 hud.html (mock) | todo | | | |
 | C3 recap timeline + tone chart | todo | | | |
 | C4 catch-me-up UI | todo | | | |
@@ -45,7 +45,7 @@ Last updated: <HH:MM ET> by orchestrator · Minute: <n>/90
 Status values: todo · doing · PR open · changes requested · merged · cut.
 
 ## Sync points
-- [ ] M0-8 contract freeze pushed; all 4 computers branched
+- [x] M0-8 contract freeze pushed; all 4 computers branched
 - [ ] M30 Merge 1 (D→A→C→B); demo mode works on real backend; **E go/no-go:** ___
 - [ ] M55 Merge 2; live mode with key; recap works
 - [ ] M70 feature freeze; final merge
@@ -54,13 +54,15 @@ Status values: todo · doing · PR open · changes requested · merged · cut.
 ## Integration status
 | Check | Status | Notes |
 |---|---|---|
-| Demo mode end to end, no key | | |
+| Demo mode end to end, no key | partial | Backend + HUD mapping suites pass; browser demo not merged yet |
 | Live cue ≤ ~5 s with key | | |
-| HUD mirrors live/demo via WS | | |
+| HUD mirrors live/demo via WS | partial | `app/cues.py` mapping merged; browser HUD not merged yet |
 | Recap lists 4 "Vaibhav" moments | | |
 | `python scripts/validate.py data/*.jsonl` | | |
 | No key in browser / no frames on disk | | |
 | Glasses | | |
+
+Post-merge verification: `uv run pytest -q` → 21 passed; `uv run python -m compileall -q app tests` → passed. One non-blocking Starlette/httpx deprecation warning remains.
 
 ## Open cross-track issues
 | # | Issue | Owner | Status |
