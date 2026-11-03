@@ -5,12 +5,19 @@ from __future__ import annotations
 import statistics
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _without_xai_key(monkeypatch: pytest.MonkeyPatch):
+    """Keep API tests deterministic even when a developer has a local key."""
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
 
 
 def test_health():

@@ -1,6 +1,6 @@
 # PROGRESS (orchestrator-only file; computers report via PR descriptions)
 
-Last updated: 20:18 ET by orchestrator · Minute: integration review
+Last updated: 20:23 ET by orchestrator · Minute: integration review
 
 ## Computer 1 (Track A: backend/Grok), branch `c1/backend`
 | Task | Status | PR | Blocker | Updated |
@@ -15,20 +15,20 @@ Last updated: 20:18 ET by orchestrator · Minute: integration review
 ## Computer 2 (Track B: live capture), branch `c2/live`
 | Task | Status | PR | Blocker | Updated |
 |---|---|---|---|---|
-| B1 api.js + mock mode | todo | | | |
-| B2 consent + capture indicator | todo | | | |
-| B3 Web Speech transcript | todo | | | |
-| B4 3 s frame loop + cue list | todo | | | |
-| B5 polish (errors, Stop/discard) | todo | | | |
+| B1 api.js + mock mode | merged | #3 | none | 20:23 ET |
+| B2 consent + capture indicator | merged | #3 | none | 20:23 ET |
+| B3 Web Speech transcript | merged | #3 | none | 20:23 ET |
+| B4 3 s frame loop + cue list | merged | #3 | none | 20:23 ET |
+| B5 polish (errors, Stop/discard) | merged | #3 | none | 20:23 ET |
 | B6 (stretch) xAI STT client | todo | | | |
 
 ## Computer 3 (Track C: HUD + recap), branch `c3/hud-recap`
 | Task | Status | PR | Blocker | Updated |
 |---|---|---|---|---|
 | C1 app/cues.py + tests | merged | #2 | none | 20:18 ET |
-| C2 hud.html (mock) | todo | | | |
-| C3 recap timeline + tone chart | todo | | | |
-| C4 catch-me-up UI | todo | | | |
+| C2 hud.html (mock) | merged | #4 | none | 20:23 ET |
+| C3 recap timeline + tone chart | merged | #5 | none | 20:23 ET |
+| C4 catch-me-up UI | merged | #6 | none | 20:23 ET |
 | C5 live HUD via real WS | todo | | | |
 
 ## Computer 4 (Track D: demo + data, then E: glasses), branches `c4/demo-data`, `c4/glasses`
@@ -56,8 +56,8 @@ Status values: todo · doing · PR open · changes requested · merged · cut.
 |---|---|---|
 | Demo mode end to end, no key | partial | Backend + HUD mapping suites pass; browser demo not merged yet |
 | Live cue ≤ ~5 s with key | | |
-| HUD mirrors live/demo via WS | partial | `app/cues.py` mapping merged; browser HUD not merged yet |
-| Recap lists 4 "Vaibhav" moments | | |
+| HUD mirrors live/demo via WS | partial | Live and standalone HUD paths merged; demo page not merged yet |
+| Recap lists 4 "Vaibhav" moments | partial | Timeline and catch-me-up UI merged; demo validation pending |
 | `python scripts/validate.py data/*.jsonl` | | |
 | No key in browser / no frames on disk | | |
 | Glasses | | |
