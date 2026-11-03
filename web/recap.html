@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SocialLens Recap</title>
+<link rel="stylesheet" href="app.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body class="recap-page">
+<div class="recap-header">
+  <h1>Catch me up</h1>
+  <button class="recap-btn" id="replay-btn">Replay</button>
+  <button class="recap-btn" id="catchup-btn">Catch me up</button>
+</div>
+<div class="recap-status" id="status"></div>
+
+<div class="recap-section">
+  <h2>Tone over time</h2>
+  <canvas id="tone-chart" height="80"></canvas>
+</div>
+
+<div class="recap-section">
+  <h2>Sound &amp; social cue markers</h2>
+  <div class="marker-strip" id="markers"></div>
+</div>
+
+<div class="recap-section">
+  <h2>Speakers</h2>
+  <div id="lanes"></div>
+</div>
+
+<script type="module">
+import { parseJsonl, buildLanes, buildToneChart, buildMarkers, replay } from "./recap.js";
+
+const params = new URLSearchParams(location.search);
+const sessionId = params.get("session") || "sample";
+const statusEl = document.getElementById("status");
+
+function unwrap(line) {
+  return line.event ? Object.assign({}, line.event, { _replay_t: line._replay_t }) : line;
+}
+
+async function loadEvents() {
+  if (sessionId === "sample") {
+    const [sessionText, speakersRes] = await Promise.all([
+      fetch("mock/sample_session.jsonl").then((r) => r.text()),
+      fetch("mock/speakers.json").then((r) => r.json()),
+    ]);
+    return { events: parseJsonl(sessionText).map(unwrap), speakers: speakersRes };
+  }
+  const [eventsRes, speakersRes] = await Promise.all([
+    fetch(`/api/sessions/${sessionId}/events`).then((r) => r.json()),
+    fetch("mock/speakers.json").then((r) => r.json()).catch(() => ({ speakers: {} })),
+  ]);
+  return { events: (eventsRes.events || []).map(unwrap), speakers: speakersRes };
+}
+
+let state = { events: [], speakers: {} };
+let chart = null;
+
+function renderAll() {
+  const lanesEl = document.getElementById("lanes");
+  const markersEl = document.getElementById("markers");
+  buildLanes(lanesEl, state.events, state.speakers);
+  buildMarkers(markersEl, state.events);
+  if (chart) chart.destroy();
+  chart = buildToneChart(document.getElementById("tone-chart"), state.events);
+}
+
+loadEvents()
+  .then((loaded) => {
+    state = loaded;
+    statusEl.textContent = `session: ${sessionId} (${state.events.length} events)`;
+    renderAll();
+  })
+  .catch((err) => {
+    statusEl.textContent = `failed to load session: ${err}`;
+  });
+
+document.getElementById("replay-btn").addEventListener("click", () => {
+  document.getElementById("lanes").innerHTML = "";
+  document.getElementById("markers").innerHTML = "";
+  if (chart) chart.destroy();
+  chart = buildToneChart(document.getElementById("tone-chart"), []);
+  const seen = [];
+  replay(state.events, (e) => {
+    seen.push(e);
+    buildLanes(document.getElementById("lanes"), seen, state.speakers);
+    buildMarkers(document.getElementById("markers"), seen);
+    if (chart) chart.destroy();
+    chart = buildToneChart(document.getElementById("tone-chart"), seen);
+  });
+});
+
+// "Catch me up" summary panel is wired up in a later task (C4); this button
+// is a no-op placeholder until then.
+document.getElementById("catchup-btn").addEventListener("click", () => {
+  statusEl.textContent = "Catch-me-up summary is not wired up yet.";
+});
+</script>
+</body>
+</html>

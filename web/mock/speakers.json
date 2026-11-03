@@ -1,0 +1,21 @@
+{
+  "user_name": "Vaibhav",
+  "speakers": {
+    "f1": {
+      "name": "Sarah",
+      "color": "#4FC3F7"
+    },
+    "f2": {
+      "name": "Alex",
+      "color": "#FFB74D"
+    },
+    "f3": {
+      "name": "Priya",
+      "color": "#BA68C8"
+    },
+    "unknown": {
+      "name": "Someone",
+      "color": "#9E9E9E"
+    }
+  }
+}
