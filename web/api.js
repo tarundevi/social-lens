@@ -132,7 +132,8 @@
   async function stt(blob) {
     if (MOCK) return { text: "" };
     const fd = new FormData();
-    fd.append("file", blob, "chunk.webm");
+    const isWav = blob.type && blob.type.includes("wav");
+    fd.append("file", blob, isWav ? "chunk.wav" : "chunk.webm");
     const res = await fetch(`${API_BASE}/api/stt`, { method: "POST", body: fd });
     if (!res.ok) {
       let body = null;

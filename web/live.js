@@ -49,6 +49,7 @@
     mediaRecorder: null,
     micStream: null,
     sttBusy: false,
+    sttLooping: false,
   };
 
   const textOnlyBtn = document.getElementById("textOnlyBtn");
@@ -360,6 +361,7 @@
   }
 
   function stopXaiStt() {
+    state.sttLooping = false;
     try {
       if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
         state.mediaRecorder.ondataavailable = null;
@@ -373,6 +375,94 @@
       state.micStream.getTracks().forEach((t) => t.stop());
       state.micStream = null;
     }
+  }
+
+  function encodeWav(audioBuffer) {
+    const numChannels = 1;
+    const sampleRate = audioBuffer.sampleRate;
+    const source = audioBuffer.getChannelData(0);
+    // Downmix if needed
+    let samples = source;
+    if (audioBuffer.numberOfChannels > 1) {
+      const ch1 = audioBuffer.getChannelData(1);
+      samples = new Float32Array(source.length);
+      for (let i = 0; i < source.length; i++) samples[i] = (source[i] + ch1[i]) * 0.5;
+    }
+    // Resample to 16k for STT friendliness
+    const targetRate = 16000;
+    const ratio = sampleRate / targetRate;
+    const newLen = Math.floor(samples.length / ratio);
+    const resampled = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) resampled[i] = samples[Math.floor(i * ratio)] || 0;
+
+    const dataLength = resampled.length * 2;
+    const buffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(buffer);
+    const writeStr = (off, str) => {
+      for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+    };
+    writeStr(0, "RIFF");
+    view.setUint32(4, 36 + dataLength, true);
+    writeStr(8, "WAVE");
+    writeStr(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, targetRate, true);
+    view.setUint32(28, targetRate * numChannels * 2, true);
+    view.setUint16(32, numChannels * 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, "data");
+    view.setUint32(40, dataLength, true);
+    let offset = 44;
+    for (let i = 0; i < resampled.length; i++) {
+      const s = Math.max(-1, Math.min(1, resampled[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      offset += 2;
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  async function blobToWav(blob) {
+    const ctx = new AudioContext();
+    try {
+      const arr = await blob.arrayBuffer();
+      const audioBuf = await ctx.decodeAudioData(arr.slice(0));
+      return encodeWav(audioBuf);
+    } finally {
+      await ctx.close().catch(() => {});
+    }
+  }
+
+  function recordCompleteChunk(stream, mime, ms) {
+    return new Promise((resolve, reject) => {
+      const parts = [];
+      let rec;
+      try {
+        rec = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 64000 });
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      state.mediaRecorder = rec;
+      rec.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size) parts.push(ev.data);
+      };
+      rec.onerror = (ev) => reject(ev.error || new Error("MediaRecorder error"));
+      rec.onstop = () => {
+        resolve(new Blob(parts, { type: mime }));
+      };
+      rec.start(); // complete file (no timeslice) — timeslice webm is invalid for STT
+      setTimeout(() => {
+        if (rec.state !== "inactive") {
+          try {
+            rec.stop();
+          } catch (_) {
+            resolve(new Blob(parts, { type: mime }));
+          }
+        }
+      }, ms);
+    });
   }
 
   async function startXaiStt() {
@@ -392,26 +482,43 @@
       state.micStream = mic;
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const rec = new MediaRecorder(mic, { mimeType: mime, audioBitsPerSecond: 64000 });
-      state.mediaRecorder = rec;
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      if (!mime) {
+        disableSpeech("MediaRecorder unsupported — type below.");
+        return;
+      }
 
-      rec.ondataavailable = (ev) => {
-        if (!ev.data || ev.data.size < 1000 || state.stopped || state.sttBusy) return;
-        void handleSttChunk(ev.data);
-      };
-      rec.onerror = (ev) => {
-        console.warn("[MediaRecorder]", ev);
-        toast("Mic recorder error — type below.", { force: true });
-      };
-
-      // Timeslice ~2.5s chunks for near-live captions
-      rec.start(2500);
+      state.sttLooping = true;
       els.chromeWarn.classList.add("visible");
       els.chromeWarn.textContent =
-        "Listening via xAI STT (not Google). Speak clearly; text appears every few seconds.";
+        "Listening via xAI STT (WAV). Speak clearly; text every ~3s.";
       els.interim.textContent = "(listening via xAI)";
-      console.log("[stt] MediaRecorder started", mime);
+      console.log("[stt] loop starting", mime);
+
+      // Fire-and-forget loop
+      void (async () => {
+        while (state.sttLooping && !state.stopped && state.micStream) {
+          try {
+            const raw = await recordCompleteChunk(state.micStream, mime, 3000);
+            if (!state.sttLooping || state.stopped) break;
+            if (!raw || raw.size < 500) continue;
+            let wav;
+            try {
+              wav = await blobToWav(raw);
+            } catch (decodeErr) {
+              console.warn("[stt] decode failed, skipping chunk", decodeErr);
+              continue;
+            }
+            await handleSttChunk(wav);
+          } catch (err) {
+            console.error("[stt] chunk loop", err);
+            if (state.stopped || !state.sttLooping) break;
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+      })();
     } catch (err) {
       console.error("[stt] mic failed", err);
       disableSpeech("Mic permission denied for STT. Allow mic, or type below.");
