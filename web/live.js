@@ -57,7 +57,8 @@
     .health()
     .then((h) => {
       console.log("[SocialLens health]", h);
-      if (h && h.grok === "missing_key") {
+      // Mock mode never calls Grok; only warn when talking to a real backend without a key.
+      if (!api.MOCK && h && h.grok === "missing_key") {
         els.banner.textContent =
           "Grok not configured, use Demo mode (or open with a backend that has XAI_API_KEY).";
         els.banner.classList.add("visible");
