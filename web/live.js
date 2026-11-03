@@ -66,7 +66,16 @@
     })
     .catch((err) => {
       console.error("[SocialLens health]", err);
-      toast("Could not reach /api/health — is the server running? Try ?mock=1");
+      if (!api.MOCK) {
+        toast("No backend on :8000 — switching to mock mode…");
+        const u = new URL(location.href);
+        u.searchParams.set("mock", "1");
+        setTimeout(() => {
+          location.replace(u.toString());
+        }, 600);
+        return;
+      }
+      toast("Could not load mock health fixture. Serve the repo root: python3 -m http.server 8080");
     });
 
   function toast(msg) {
