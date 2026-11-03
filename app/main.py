@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -23,9 +23,9 @@ from app.events import make_caption, make_social_cue
 from app.prompts import DISCLAIMER
 from app.store import store
 
-ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(ROOT / ".env")
+load_dotenv()
 
+ROOT = Path(__file__).resolve().parents[1]
 USER_NAME = os.getenv("USER_NAME", "Vaibhav")
 
 app = FastAPI(title="SocialLens")
@@ -98,15 +98,14 @@ def get_canned(scenario_id: str) -> dict[str, Any]:
 
 
 def hud_for(event: dict[str, Any]) -> dict[str, Any] | None:
-    """Prefer Track C's app.cues.hud_for; stub only if import fails."""
+    if not event.get("notified"):
+        return None
     try:
-        from app.cues import hud_for as cues_hud
+        from app.cues import hud_for as cues_hud  # type: ignore
 
         return cues_hud(event)
     except Exception:
         pass
-    if not event.get("notified"):
-        return None
     reply = event.get("suggested_response")
     text = event.get("cue") or ""
     icons = {
@@ -275,6 +274,27 @@ def health() -> dict[str, Any]:
         "grok": "configured" if grok.configured() else "missing_key",
         "model": os.getenv("XAI_MODEL", "grok-4.7"),
     }
+
+
+@app.post("/api/stt")
+async def stt(file: UploadFile = File(...)) -> dict[str, str]:
+    """Proxy short audio clips to xAI speech-to-text (server-side key only)."""
+    if not grok.configured():
+        raise HTTPException(status_code=503, detail={"error": "missing_key"})
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail={"error": "empty_file"})
+    if len(raw) > 1_000_000:
+        raise HTTPException(status_code=413, detail={"error": "audio_too_large"})
+    try:
+        text = await grok.transcribe(
+            raw,
+            filename=file.filename or "audio.webm",
+            content_type=file.content_type or "audio/webm",
+        )
+    except grok.GrokUnavailable as exc:
+        raise HTTPException(status_code=502, detail={"error": str(exc)}) from None
+    return {"text": text}
 
 
 @app.post("/api/sessions")
@@ -468,12 +488,8 @@ async def recap(body: RecapIn) -> dict[str, Any]:
         try:
             result = await grok.recap(build_compact_log(events), USER_NAME)
             return {"source": "grok", "recap": result, "message": None}
-        except grok.GrokUnavailable as exc:
-            return {
-                "source": "heuristic",
-                "message": f"Grok recap failed ({exc}); showing a rule-based summary.",
-                "recap": heuristic_recap(events, USER_NAME),
-            }
+        except grok.GrokUnavailable:
+            pass
 
     return {
         "source": "heuristic",
@@ -523,7 +539,8 @@ async def ws_session(websocket: WebSocket, session_id: str) -> None:
             if wait:
                 await asyncio.sleep(wait)
             last_t = t
-            await websocket.send_json({"event": ev, "hud": hud_for(ev)})
+            hud = hud_for(ev) if ev.get("type") == "social_cue" else None
+            await websocket.send_json({"event": ev, "hud": hud})
         try:
             while True:
                 await websocket.receive_text()

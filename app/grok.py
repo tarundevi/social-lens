@@ -93,7 +93,7 @@ async def analyze_frame(
 
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(f"{_base()}/responses", headers=headers, json=body)
             if r.status_code >= 400:
                 # Drop unverified params on retry is N/A here; surface as unavailable.
@@ -109,20 +109,42 @@ async def analyze_frame(
         raise GrokUnavailable(str(type(exc).__name__)) from None
 
 
+async def transcribe(file_bytes: bytes, filename: str = "audio.webm", content_type: str = "audio/webm") -> str:
+    """POST multipart to xAI /stt. Returns transcript text."""
+    key = _key()
+    if not key:
+        raise GrokUnavailable("missing_key")
+    model = os.getenv("XAI_STT_MODEL", "grok-voice-transcribe-2.0")
+    headers = {"Authorization": f"Bearer {key}"}
+    files = {"file": (filename, file_bytes, content_type)}
+    data = {"model": model, "language": "en"}
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(f"{_base()}/stt", headers=headers, data=data, files=files)
+            if r.status_code >= 400:
+                raise GrokUnavailable(f"stt http {r.status_code}: {r.text[:200]}")
+            payload = r.json()
+            text = payload.get("text")
+            if not isinstance(text, str):
+                raise GrokUnavailable("stt missing text")
+            return text.strip()
+    except GrokUnavailable:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise GrokUnavailable(str(type(exc).__name__)) from None
+
+
 async def recap(compact_log: str, user_name: str) -> dict[str, Any]:
     """POST chat/completions with RecapOutput json_schema."""
     key = _key()
     if not key:
         raise GrokUnavailable("missing_key")
 
-    # Keep under ~6k tokens; reasoning models are slow on huge logs.
-    trimmed = compact_log if len(compact_log) <= 6000 else compact_log[-6000:]
-
     body = {
         "model": _model(),
         "messages": [
             {"role": "system", "content": RECAP_SYSTEM_PROMPT},
-            {"role": "user", "content": f"User: {user_name}\n{trimmed}"},
+            {"role": "user", "content": f"User: {user_name}\n{compact_log}"},
         ],
         "response_format": {
             "type": "json_schema",
@@ -131,12 +153,12 @@ async def recap(compact_log: str, user_name: str) -> dict[str, Any]:
     }
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(
                 f"{_base()}/chat/completions", headers=headers, json=body
             )
             if r.status_code >= 400:
-                raise GrokUnavailable(f"http {r.status_code}: {r.text[:200]}")
+                raise GrokUnavailable(f"http {r.status_code}")
             data = r.json()
             content = data["choices"][0]["message"]["content"]
             return json.loads(content)
