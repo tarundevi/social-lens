@@ -217,7 +217,10 @@
   <div id="toasts" aria-live="polite"></div>
 
   <script src="api.js"></script>
-  <script src="hud.js"></script>
-  <script src="live.js"></script>
+  <script type="module">
+    import { renderHud } from "./hud.js";
+    window.renderHud = renderHud;
+    await import("./live.js");
+  </script>
 </body>
 </html>
