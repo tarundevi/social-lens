@@ -33,8 +33,8 @@ final class SocialLensCueBridge {
     #if targetEnvironment(simulator)
     let fallback = "http://127.0.0.1:8000"
     #else
-    // Device default: Mac LAN IP from hackathon machine; edit in UI if needed.
-    let fallback = "http://10.90.44.69:8000"
+    // Device: must set Base URL in the server settings sheet (LAN IP of the laptop).
+    let fallback = "http://127.0.0.1:8000"
     #endif
     let stored = UserDefaults.standard.string(forKey: defaultsKey)
     let initial = (stored?.isEmpty == false) ? stored! : fallback
@@ -48,6 +48,13 @@ final class SocialLensCueBridge {
     self.frameProvider = frameProvider
     sessionStart = Date()
     captureActive = true
+    #if !targetEnvironment(simulator)
+    if baseURLString.contains("127.0.0.1") || baseURLString.contains("localhost") {
+      statusText = "Set SocialLens Base URL to http://<mac-lan-ip>:8000"
+      captureActive = false
+      return
+    }
+    #endif
     statusText = "SocialLens connecting…"
     loopTask = Task { [weak self] in
       await self?.runLoop()
@@ -113,8 +120,11 @@ final class SocialLensCueBridge {
   }
 
   private func speakCue(_ text: String) {
-    // Keep ≤ ~6 words when possible for glasses speakers.
-    let utterance = AVSpeechUtterance(string: text)
+    // Glasses speakers: keep it glanceable (≤ ~6 words).
+    let words = text.split { $0.isWhitespace || $0.isNewline }.prefix(6)
+    let spoken = words.joined(separator: " ")
+    guard !spoken.isEmpty else { return }
+    let utterance = AVSpeechUtterance(string: spoken)
     utterance.rate = AVSpeechUtteranceDefaultSpeechRate
     utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
     speech.stopSpeaking(at: .immediate)
