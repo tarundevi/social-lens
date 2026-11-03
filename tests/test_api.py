@@ -115,3 +115,17 @@ def test_analyze_latency_logged():
     p50 = statistics.median(samples_sorted)
     p95 = samples_sorted[max(0, int(len(samples_sorted) * 0.95) - 1)]
     print(f"analyze latency p50={p50:.1f}ms p95={p95:.1f}ms", flush=True)
+
+
+def test_heuristic_recap_uses_speaker_names(tmp_path, monkeypatch):
+    import app.main as m
+
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "speakers.json").write_text('{"speakers": {"f1": {"name": "Sarah"}}}')
+    monkeypatch.setattr(m, "ROOT", tmp_path)
+    caps = [{"type": "caption", "speaker_id": "f1", "t_start": 1.0, "text": "Vaibhav, can you help?"},
+            {"type": "caption", "speaker_id": "unknown", "t_start": 2.0, "text": "hi"},
+            {"type": "caption", "speaker_id": "f9", "t_start": 3.0, "text": "hello"}]
+    r = m.heuristic_recap(caps, "Vaibhav")
+    assert r["addressed_to_you"][0]["speaker"] == "Sarah"
+    assert [p["speaker"] for p in r["per_speaker"]] == ["Sarah", "Someone", "f9"]

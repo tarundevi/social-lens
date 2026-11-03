@@ -152,6 +152,15 @@ def _fmt_t(t: float) -> str:
     return f"{m}:{s:02d}"
 
 
+def _speaker_names() -> dict[str, str]:
+    """face_id -> display name from data/speakers.json (dashboard-only overlay; never sent to Grok)."""
+    try:
+        data = json.loads((ROOT / "data" / "speakers.json").read_text())
+        return {k: v["name"] for k, v in data.get("speakers", {}).items() if v.get("name")}
+    except (OSError, ValueError, AttributeError, KeyError, TypeError):
+        return {}
+
+
 def heuristic_recap(events: list[dict[str, Any]], user_name: str) -> dict[str, Any]:
     name_re = re.compile(rf"\b{re.escape(user_name)}\b", re.I)
     action_re = re.compile(
@@ -162,10 +171,10 @@ def heuristic_recap(events: list[dict[str, Any]], user_name: str) -> dict[str, A
     per: dict[str, list[str]] = {}
     addressed: list[dict[str, str]] = []
     actions: list[dict[str, Any]] = []
+    names = _speaker_names()
     for c in captions:
         spk = c.get("speaker_id") or "unknown"
-        if spk == "unknown":
-            spk = "Someone"
+        spk = "Someone" if spk == "unknown" else names.get(spk, spk)
         per.setdefault(spk, []).append(c.get("text") or "")
         text = c.get("text") or ""
         t = _fmt_t(float(c.get("t_start") or 0))
