@@ -1,0 +1,117 @@
+/* Shared styles: recap page (and HUD panel, if that track's app.css lands later). */
+
+body {
+  background: #111;
+  color: #eee;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 0;
+  padding: 16px 24px 48px;
+}
+
+.recap-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.recap-header h1 {
+  font-size: 20px;
+  margin: 0;
+  flex: 1;
+}
+
+button.recap-btn {
+  background: #2a2a2a;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button.recap-btn:hover {
+  background: #383838;
+}
+
+.recap-section {
+  margin-bottom: 28px;
+}
+
+.recap-section h2 {
+  font-size: 14px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 8px;
+}
+
+/* Markers strip: a horizontal timeline of sound_event / social_cue dots. */
+.marker-strip {
+  position: relative;
+  height: 40px;
+  background: #1a1a1a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.marker {
+  position: absolute;
+  top: 6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #111;
+  transition: transform 0.15s ease;
+}
+
+.marker:hover {
+  transform: scale(1.4);
+}
+
+.marker.marker-sound {
+  background: #FFD54F;
+}
+
+.marker.marker-cue {
+  background: #4FC3F7;
+}
+
+/* Speaker lanes */
+.lane {
+  border-left: 4px solid #555;
+  padding-left: 12px;
+  margin-bottom: 10px;
+}
+
+.caption-row {
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  scroll-margin-top: 80px;
+}
+
+.caption-row .caption-time {
+  color: #888;
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.caption-row .caption-tone {
+  color: #777;
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+.caption-row.highlight {
+  background: #2a2a2a;
+  outline: 2px solid #4FC3F7;
+}
+
+.recap-status {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 12px;
+}
