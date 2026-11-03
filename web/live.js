@@ -294,7 +294,12 @@
       });
 
       if (camera) {
-        await startXaiStt(); // mic → /api/stt (bypasses broken Chrome→Google STT)
+        const health = await api.health().catch(() => null);
+        if (!api.MOCK && health && health.grok === "configured") {
+          await startXaiStt();
+        } else {
+          startSpeech();
+        }
         startFrameLoop();
         setTimeout(() => {
           if (!state.stopped && state.finals.length === 0) {

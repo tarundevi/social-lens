@@ -93,7 +93,7 @@ async def analyze_frame(
 
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             r = await client.post(f"{_base()}/responses", headers=headers, json=body)
             if r.status_code >= 400:
                 # Drop unverified params on retry is N/A here; surface as unavailable.
@@ -140,11 +140,14 @@ async def recap(compact_log: str, user_name: str) -> dict[str, Any]:
     if not key:
         raise GrokUnavailable("missing_key")
 
+    # Keep under ~6k tokens; reasoning models are slow on huge logs.
+    trimmed = compact_log if len(compact_log) <= 6000 else compact_log[-6000:]
+
     body = {
         "model": _model(),
         "messages": [
             {"role": "system", "content": RECAP_SYSTEM_PROMPT},
-            {"role": "user", "content": f"User: {user_name}\n{compact_log}"},
+            {"role": "user", "content": f"User: {user_name}\n{trimmed}"},
         ],
         "response_format": {
             "type": "json_schema",
@@ -153,12 +156,12 @@ async def recap(compact_log: str, user_name: str) -> dict[str, Any]:
     }
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             r = await client.post(
                 f"{_base()}/chat/completions", headers=headers, json=body
             )
             if r.status_code >= 400:
-                raise GrokUnavailable(f"http {r.status_code}")
+                raise GrokUnavailable(f"http {r.status_code}: {r.text[:200]}")
             data = r.json()
             content = data["choices"][0]["message"]["content"]
             return json.loads(content)

@@ -23,9 +23,9 @@ from app.events import make_caption, make_social_cue
 from app.prompts import DISCLAIMER
 from app.store import store
 
-load_dotenv()
-
 ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
+
 USER_NAME = os.getenv("USER_NAME", "Vaibhav")
 
 app = FastAPI(title="SocialLens")
@@ -98,14 +98,15 @@ def get_canned(scenario_id: str) -> dict[str, Any]:
 
 
 def hud_for(event: dict[str, Any]) -> dict[str, Any] | None:
-    if not event.get("notified"):
-        return None
+    """Prefer Track C's app.cues.hud_for; stub only if import fails."""
     try:
-        from app.cues import hud_for as cues_hud  # type: ignore
+        from app.cues import hud_for as cues_hud
 
         return cues_hud(event)
     except Exception:
         pass
+    if not event.get("notified"):
+        return None
     reply = event.get("suggested_response")
     text = event.get("cue") or ""
     icons = {
@@ -488,8 +489,12 @@ async def recap(body: RecapIn) -> dict[str, Any]:
         try:
             result = await grok.recap(build_compact_log(events), USER_NAME)
             return {"source": "grok", "recap": result, "message": None}
-        except grok.GrokUnavailable:
-            pass
+        except grok.GrokUnavailable as exc:
+            return {
+                "source": "heuristic",
+                "message": f"Grok recap failed ({exc}); showing a rule-based summary.",
+                "recap": heuristic_recap(events, USER_NAME),
+            }
 
     return {
         "source": "heuristic",
@@ -539,8 +544,7 @@ async def ws_session(websocket: WebSocket, session_id: str) -> None:
             if wait:
                 await asyncio.sleep(wait)
             last_t = t
-            hud = hud_for(ev) if ev.get("type") == "social_cue" else None
-            await websocket.send_json({"event": ev, "hud": hud})
+            await websocket.send_json({"event": ev, "hud": hud_for(ev)})
         try:
             while True:
                 await websocket.receive_text()
