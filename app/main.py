@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -275,6 +275,27 @@ def health() -> dict[str, Any]:
         "grok": "configured" if grok.configured() else "missing_key",
         "model": os.getenv("XAI_MODEL", "grok-4.7"),
     }
+
+
+@app.post("/api/stt")
+async def stt(file: UploadFile = File(...)) -> dict[str, str]:
+    """Proxy short audio clips to xAI speech-to-text (server-side key only)."""
+    if not grok.configured():
+        raise HTTPException(status_code=503, detail={"error": "missing_key"})
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail={"error": "empty_file"})
+    if len(raw) > 1_000_000:
+        raise HTTPException(status_code=413, detail={"error": "audio_too_large"})
+    try:
+        text = await grok.transcribe(
+            raw,
+            filename=file.filename or "audio.webm",
+            content_type=file.content_type or "audio/webm",
+        )
+    except grok.GrokUnavailable as exc:
+        raise HTTPException(status_code=502, detail={"error": str(exc)}) from None
+    return {"text": text}
 
 
 @app.post("/api/sessions")

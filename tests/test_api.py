@@ -8,6 +8,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from app import grok
 from app.main import app
 
 
@@ -27,6 +28,29 @@ def test_health():
     assert body["ok"] is True
     assert body["grok"] in {"configured", "missing_key"}
     assert "model" in body
+
+
+def test_stt_missing_key_returns_503():
+    response = client.post(
+        "/api/stt",
+        files={"file": ("sample.wav", b"RIFFdata", "audio/wav")},
+    )
+    assert response.status_code == 503
+
+
+def test_stt_returns_transcript(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("XAI_API_KEY", "test-key-not-real")
+
+    async def fake_transcribe(*_args, **_kwargs):
+        return "hello from the microphone"
+
+    monkeypatch.setattr(grok, "transcribe", fake_transcribe)
+    response = client.post(
+        "/api/stt",
+        files={"file": ("sample.wav", b"RIFFdata", "audio/wav")},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"text": "hello from the microphone"}
 
 
 def test_analyze_canned_wave_and_dedupe():
