@@ -130,9 +130,14 @@ struct CameraView: View {
             if !viewModel.socialLens.lastCueText.isEmpty {
               Text("Last cue: \(viewModel.socialLens.lastCueText)")
             }
+            if !viewModel.socialLens.transcriptPreview.isEmpty {
+              Text("Transcript window:\n\(viewModel.socialLens.transcriptPreview)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
           }
           Section {
-            Text("Phone and Mac must be on the same Wi‑Fi. Run: uvicorn app.main:app --host 0.0.0.0 --port 8000")
+            Text("Same Wi‑Fi as the Mac. Prefer: ./scripts/run_backend.sh (binds 0.0.0.0:8000, frees a busy port). Phone mic feeds transcript; glasses camera feeds vision.")
               .font(.footnote)
           }
         }
