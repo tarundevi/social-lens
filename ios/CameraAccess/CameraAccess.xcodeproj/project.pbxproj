@@ -38,6 +38,8 @@
 		D7A0000000000000000000AA /* AudioInputHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A0000000000000000000A9 /* AudioInputHandler.swift */; };
 		D7A0000000000000000000AC /* AudioCaptureHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A0000000000000000000AB /* AudioCaptureHandler.swift */; };
 		D7A0000000000000000000B2 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A0000000000000000000B1 /* CameraView.swift */; };
+		SL0000000000000000000002 /* SocialLensAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = SL0000000000000000000001 /* SocialLensAPIClient.swift */; };
+		SL0000000000000000000004 /* SocialLensCueBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = SL0000000000000000000003 /* SocialLensCueBridge.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -103,6 +105,8 @@
 		D7A0000000000000000000A9 /* AudioInputHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputHandler.swift; sourceTree = "<group>"; };
 		D7A0000000000000000000AB /* AudioCaptureHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureHandler.swift; sourceTree = "<group>"; };
 		D7A0000000000000000000B1 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
+		SL0000000000000000000001 /* SocialLensAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialLensAPIClient.swift; sourceTree = "<group>"; };
+		SL0000000000000000000003 /* SocialLensCueBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialLensCueBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -197,12 +201,22 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		SL0000000000000000000010 /* SocialLens */ = {
+			isa = PBXGroup;
+			children = (
+				SL0000000000000000000001 /* SocialLensAPIClient.swift */,
+				SL0000000000000000000003 /* SocialLensCueBridge.swift */,
+			);
+			path = SocialLens;
+			sourceTree = "<group>";
+		};
 		8FD96B7D2E6F0A9800F56AB1 /* CameraAccess */ = {
 			isa = PBXGroup;
 			children = (
 				E66CC01A2F3E1A9300B07379 /* TestResources */,
 				8FD96B702E6F0A9800F56AB1 /* ViewModels */,
 				D7A0000000000000000000F0 /* Media */,
+				SL0000000000000000000010 /* SocialLens */,
 				8FD96B762E6F0A9800F56AB1 /* Views */,
 				8FD96B772E6F0A9800F56AB1 /* Assets.xcassets */,
 				8FD96B782E6F0A9800F56AB1 /* CameraAccess.entitlements */,
@@ -417,6 +431,8 @@
 				D7A0000000000000000000AA /* AudioInputHandler.swift in Sources */,
 				D7A0000000000000000000AC /* AudioCaptureHandler.swift in Sources */,
 				D7A0000000000000000000B2 /* CameraView.swift in Sources */,
+				SL0000000000000000000002 /* SocialLensAPIClient.swift in Sources */,
+				SL0000000000000000000004 /* SocialLensCueBridge.swift in Sources */,
 				8FFD5FF52E8422580035E446 /* CircleButton.swift in Sources */,
 				8FFD5FF62E8422580035E446 /* CustomButton.swift in Sources */,
 				FACE0000000000000000FA02 /* TipRow.swift in Sources */,

@@ -99,6 +99,16 @@ final class CameraViewModel {
   /// Meta AI app — surfaced only when permission isn't already granted.
   var showCameraPermissionRedirectConfirm: Bool = false
 
+  /// SocialLens: every-3s analyze loop + TTS for notified cues while streaming.
+  let socialLens = SocialLensCueBridge()
+
+  func setSocialLensEnabled(_ enabled: Bool) {
+    socialLens.isEnabled = enabled
+    if enabled && isStreaming {
+      socialLens.start { [weak self] in self?.currentVideoFrame }
+    }
+  }
+
   // MARK: - Derived session state
 
   var isSessionStarting: Bool { sessionState == .starting }
@@ -532,11 +542,17 @@ final class CameraViewModel {
 
   private func handleStreamStateChange(_ state: StreamState) {
     streamState = state
-    if state == .stopped {
+    if state == .streaming {
+      socialLens.start { [weak self] in self?.currentVideoFrame }
+    } else if state == .stopped {
+      socialLens.stop()
       // Terminal — finalize any recording, then converge teardown. Covers both
       // user-initiated stop and SDK auto-stop (disconnect, error, session end).
       Task { await stopVideoRecording() }
       clearStreamResources()
+    } else if state == .paused || state == .stopping {
+      // Keep last frame available; pause analyze to avoid stale/busy spam.
+      socialLens.stop()
     }
   }
 

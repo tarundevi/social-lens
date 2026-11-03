@@ -33,6 +33,20 @@ A sample iOS application demonstrating integration with Meta Wearables Device Ac
 1. Click the "Build" button or press `Cmd+B` to build the project
 1. To run the app, click the "Run" button (▶️) or press `Cmd+R`
 
+## SocialLens bridge (glasses → Grok vision)
+
+While the glasses camera is streaming, the app JPEG-encodes a frame every ~3s and
+`POST`s it to your laptop backend as `input_kind: "glasses"`. Notified cues are
+spoken with `AVSpeechSynthesizer`. Frames are never written to disk.
+
+1. On the laptop (same Wi‑Fi as the phone), with `XAI_API_KEY` in `.env`:
+   ```bash
+   uvicorn app.main:app --host 0.0.0.0 --port 8000
+   ```
+2. In the app, tap the server icon and set Base URL to `http://<your-mac-lan-ip>:8000`
+   (simulator can use `http://127.0.0.1:8000`).
+3. Start Session → Preview. Status line shows analyze latency; cues speak aloud.
+
 ## Running the app
 
 1. Turn 'Developer Mode' on in the Meta AI app.

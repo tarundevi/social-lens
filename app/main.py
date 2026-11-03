@@ -14,6 +14,7 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -273,7 +274,7 @@ def health() -> dict[str, Any]:
     return {
         "ok": True,
         "grok": "configured" if grok.configured() else "missing_key",
-        "model": os.getenv("XAI_MODEL", "grok-4.7"),
+        "model": os.getenv("XAI_MODEL", "grok-4.20-0309-non-reasoning"),
     }
 
 
@@ -327,12 +328,11 @@ async def analyze(body: AnalyzeIn) -> dict[str, Any]:
     t0 = time.perf_counter()
     sess = store.ensure(body.session_id)
     if sess.analyze_busy:
-        raise HTTPException(status_code=429, detail={"error": "busy"})
+        return JSONResponse(status_code=429, content={"error": "busy"})
+    if body.image_b64 and len(body.image_b64) > 1_400_000:  # ~1MB b64
+        return JSONResponse(status_code=413, content={"error": "image_too_large"})
     sess.analyze_busy = True
     try:
-        if body.image_b64 and len(body.image_b64) > 1_400_000:  # ~1MB b64
-            raise HTTPException(status_code=413, detail={"error": "image_too_large"})
-
         input_kind = body.input_kind or (
             "demo_input" if body.scenario_id else ("audio_only" if not body.image_b64 else "live_camera")
         )
@@ -372,7 +372,7 @@ async def analyze(body: AnalyzeIn) -> dict[str, Any]:
                     recent_cues=recent,
                 )
                 source = "grok"
-                model_version = os.getenv("XAI_MODEL", "grok-4.7")
+                model_version = os.getenv("XAI_MODEL", "grok-4.20-0309-non-reasoning")
             except grok.GrokUnavailable:
                 if body.scenario_id:
                     canned = get_canned(body.scenario_id)

@@ -30,7 +30,8 @@ def _base() -> str:
 
 
 def _model() -> str:
-    return os.getenv("XAI_MODEL", "grok-4.7")
+    # Non-reasoning is fast enough for live cues; override via XAI_MODEL if needed.
+    return os.getenv("XAI_MODEL", "grok-4.20-0309-non-reasoning")
 
 
 def configured() -> bool:

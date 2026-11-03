@@ -59,8 +59,14 @@
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Needed to connect to Meta AI Glasses</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Cleartext HTTP to the laptop on LAN (hackathon). Do not enable arbitrary loads. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>This lets your phone find and connect to your glasses over Wi-Fi.</string>
+	<string>This lets your phone reach SocialLens on your laptop and connect to your glasses over Wi-Fi.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_bonjour._tcp</string>
