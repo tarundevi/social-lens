@@ -41,11 +41,12 @@ spoken with `AVSpeechSynthesizer`. Frames are never written to disk.
 
 1. On the laptop (same Wi‑Fi as the phone), with `XAI_API_KEY` in `.env`:
    ```bash
-   uvicorn app.main:app --host 0.0.0.0 --port 8000
+   ./scripts/run_backend.sh
    ```
 2. In the app, tap the server icon and set Base URL to `http://<your-mac-lan-ip>:8000`
    (simulator can use `http://127.0.0.1:8000`).
-3. Start Session → Preview. Status line shows analyze latency; cues speak aloud.
+3. Start Session → Preview. Allow **mic + speech** when prompted (phone mic builds the transcript window; glasses HFP is wearer-only).
+4. Status line shows analyze latency; notified cues speak aloud (≤6 words).
 
 ## Running the app
 

@@ -16,20 +16,18 @@ final class SocialLensCueBridge {
   var baseURLString: String {
     didSet { UserDefaults.standard.set(baseURLString, forKey: defaultsKey) }
   }
-  var isEnabled: Bool = true {
-    didSet {
-      if !isEnabled { stop() }
-    }
-  }
+  var isEnabled: Bool = true
   var statusText: String = "SocialLens idle"
   var lastCueText: String = ""
   var lastLatencyMs: Int?
   var isAnalyzing: Bool = false
   var captureActive: Bool = false
+  var transcriptPreview: String = ""
 
   private var client: SocialLensAPIClient
   private var loopTask: Task<Void, Never>?
   private let speech = AVSpeechSynthesizer()
+  private let speechCapture = SocialLensSpeechCapture()
   private var sessionStart: Date?
   private var frameProvider: (() -> UIImage?)?
 
@@ -48,9 +46,10 @@ final class SocialLensCueBridge {
 
   func start(frameProvider: @escaping () -> UIImage?) {
     guard isEnabled else { return }
-    stop()
+    stop(clearSession: false)
     self.frameProvider = frameProvider
-    sessionStart = Date()
+    let start = Date()
+    sessionStart = start
     captureActive = true
     #if !targetEnvironment(simulator)
     if baseURLString.contains("127.0.0.1") || baseURLString.contains("localhost") {
@@ -60,19 +59,40 @@ final class SocialLensCueBridge {
     }
     #endif
     statusText = "SocialLens connecting…"
+    Task { await speechCapture.start(sessionStart: start) }
     loopTask = Task { [weak self] in
       await self?.runLoop()
     }
   }
 
-  func stop() {
+  /// Soft pause: keep session + last frames; hard stop tears down.
+  func pauseAnalyze() {
+    loopTask?.cancel()
+    loopTask = nil
+    isAnalyzing = false
+    statusText = "SocialLens paused (stream paused)"
+  }
+
+  func resumeAnalyzeIfNeeded() {
+    guard isEnabled, captureActive, frameProvider != nil, loopTask == nil else { return }
+    statusText = "SocialLens resuming…"
+    loopTask = Task { [weak self] in
+      await self?.runLoop()
+    }
+  }
+
+  func stop(clearSession: Bool = true) {
     loopTask?.cancel()
     loopTask = nil
     frameProvider = nil
     captureActive = false
     isAnalyzing = false
+    transcriptPreview = ""
+    speechCapture.stop()
     statusText = "SocialLens idle"
-    Task { await client.deleteSession() }
+    if clearSession {
+      Task { await client.deleteSession() }
+    }
   }
 
   func applyBaseURL() {
@@ -101,16 +121,33 @@ final class SocialLensCueBridge {
       statusText = "SocialLens waiting for frame…"
       return
     }
-    guard let jpeg = SocialLensJPEG.encode(image) else { return }
     if isAnalyzing { return }
     isAnalyzing = true
     defer { isAnalyzing = false }
 
+    // Encode off the main actor to avoid hitching the preview.
+    let jpeg: Data? = await Task.detached(priority: .userInitiated) {
+      SocialLensJPEG.encode(image)
+    }.value
+    guard let jpeg else { return }
+
+    let transcript = speechCapture.transcriptWindow()
+    transcriptPreview = transcript
+    if let err = speechCapture.lastError, transcript.isEmpty {
+      // Non-fatal: vision-only still works.
+      statusText = "mic/speech: \(err)"
+    }
+
     let t = Date().timeIntervalSince(sessionStart ?? Date())
     do {
-      let result = try await client.analyze(imageJPEG: jpeg, t: t)
+      let result = try await client.analyze(
+        imageJPEG: jpeg,
+        t: t,
+        transcriptWindow: transcript
+      )
       lastLatencyMs = result.latencyMs
-      statusText = "\(result.source ?? "?") · \(result.latencyMs ?? 0) ms · \(result.cueType ?? "-")"
+      let speechNote = transcript.isEmpty ? "vision-only" : "vision+transcript"
+      statusText = "\(result.source ?? "?") · \(result.latencyMs ?? 0) ms · \(result.cueType ?? "-") · \(speechNote)"
       if result.notified {
         let speak = result.hudText ?? result.cue ?? "Social cue"
         lastCueText = speak

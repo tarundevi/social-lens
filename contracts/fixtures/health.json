@@ -1,1 +1,1 @@
-{"ok": true, "grok": "missing_key", "model": "grok-4.7"}
+{"ok": true, "grok": "missing_key", "model": "grok-4.20-0309-non-reasoning"}

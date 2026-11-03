@@ -79,7 +79,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to stream from your phone's camera as a mock device feed.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>This app needs microphone access to record sound from your glasses' microphone alongside video.</string>
+	<string>This app needs microphone access for glasses video audio and for SocialLens phone-mic transcripts (other people's speech).</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>SocialLens uses on-device speech recognition on the phone mic to build a short transcript window for social-cue analysis. Transcripts are not saved.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

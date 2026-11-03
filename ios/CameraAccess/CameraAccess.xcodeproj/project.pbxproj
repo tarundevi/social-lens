@@ -40,6 +40,7 @@
 		D7A0000000000000000000B2 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A0000000000000000000B1 /* CameraView.swift */; };
 		SL0000000000000000000002 /* SocialLensAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = SL0000000000000000000001 /* SocialLensAPIClient.swift */; };
 		SL0000000000000000000004 /* SocialLensCueBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = SL0000000000000000000003 /* SocialLensCueBridge.swift */; };
+		SL0000000000000000000006 /* SocialLensSpeechCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = SL0000000000000000000005 /* SocialLensSpeechCapture.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -107,6 +108,7 @@
 		D7A0000000000000000000B1 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
 		SL0000000000000000000001 /* SocialLensAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialLensAPIClient.swift; sourceTree = "<group>"; };
 		SL0000000000000000000003 /* SocialLensCueBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialLensCueBridge.swift; sourceTree = "<group>"; };
+		SL0000000000000000000005 /* SocialLensSpeechCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialLensSpeechCapture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -206,6 +208,7 @@
 			children = (
 				SL0000000000000000000001 /* SocialLensAPIClient.swift */,
 				SL0000000000000000000003 /* SocialLensCueBridge.swift */,
+				SL0000000000000000000005 /* SocialLensSpeechCapture.swift */,
 			);
 			path = SocialLens;
 			sourceTree = "<group>";
@@ -433,6 +436,7 @@
 				D7A0000000000000000000B2 /* CameraView.swift in Sources */,
 				SL0000000000000000000002 /* SocialLensAPIClient.swift in Sources */,
 				SL0000000000000000000004 /* SocialLensCueBridge.swift in Sources */,
+				SL0000000000000000000006 /* SocialLensSpeechCapture.swift in Sources */,
 				8FFD5FF52E8422580035E446 /* CircleButton.swift in Sources */,
 				8FFD5FF62E8422580035E446 /* CustomButton.swift in Sources */,
 				FACE0000000000000000FA02 /* TipRow.swift in Sources */,

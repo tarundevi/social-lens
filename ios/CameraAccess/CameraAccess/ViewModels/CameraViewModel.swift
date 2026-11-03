@@ -106,6 +106,8 @@ final class CameraViewModel {
     socialLens.isEnabled = enabled
     if enabled && isStreaming {
       socialLens.start { [weak self] in self?.currentVideoFrame }
+    } else if !enabled {
+      socialLens.stop()
     }
   }
 
@@ -543,15 +545,22 @@ final class CameraViewModel {
   private func handleStreamStateChange(_ state: StreamState) {
     streamState = state
     if state == .streaming {
-      socialLens.start { [weak self] in self?.currentVideoFrame }
+      // Fresh start if needed; if we only soft-paused, resume the loop.
+      if socialLens.captureActive {
+        socialLens.resumeAnalyzeIfNeeded()
+      } else {
+        socialLens.start { [weak self] in self?.currentVideoFrame }
+      }
     } else if state == .stopped {
       socialLens.stop()
       // Terminal — finalize any recording, then converge teardown. Covers both
       // user-initiated stop and SDK auto-stop (disconnect, error, session end).
       Task { await stopVideoRecording() }
       clearStreamResources()
-    } else if state == .paused || state == .stopping {
-      // Keep last frame available; pause analyze to avoid stale/busy spam.
+    } else if state == .paused {
+      // Keep last frame + backend session; soft-pause the analyze loop.
+      socialLens.pauseAnalyze()
+    } else if state == .stopping {
       socialLens.stop()
     }
   }
