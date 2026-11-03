@@ -41,6 +41,7 @@
     analyzing: false,
     frameTimer: null,
     recentCues: [],
+    seenCueIds: new Set(),
     stopped: false,
   };
 
@@ -52,21 +53,29 @@
   els.stopBtn.addEventListener("click", () => stopCapture({ offerDiscard: true }));
   els.discardBtn.addEventListener("click", () => discardSession().catch(onFatal));
 
-  // B1 check: health fixture logged in mock mode
   api
     .health()
     .then((h) => {
       console.log("[SocialLens health]", h);
-      // Mock mode never calls Grok; only warn when talking to a real backend without a key.
-      if (!api.MOCK && h && h.grok === "missing_key") {
+      if (api.MOCK) return;
+      if (h && h.grok === "configured") {
+        els.banner.textContent = `Live · Grok ready (${h.model || "grok"})`;
+        els.banner.style.background = "#1b3a2f";
+        els.banner.style.color = "#a5d6a7";
+        els.banner.classList.add("visible");
+      } else if (h && h.grok === "missing_key") {
         els.banner.textContent =
-          "Grok not configured, use Demo mode (or open with a backend that has XAI_API_KEY).";
+          "Backend is up but XAI_API_KEY is missing — cues will be canned until the key is set in .env.";
         els.banner.classList.add("visible");
       }
     })
     .catch((err) => {
       console.error("[SocialLens health]", err);
-      toast("Could not reach /api/health — is the server running? Try ?mock=1");
+      if (api.MOCK) {
+        toast("Could not load mock fixtures. Serve repo root or use http://localhost:8000/web/live.html");
+        return;
+      }
+      toast("Backend not reachable. Start: uvicorn app.main:app --port 8000 — then open http://localhost:8000/web/live.html");
     });
 
   function toast(msg) {
@@ -123,11 +132,26 @@
     }
   }
 
-  function pushCue(event, hud, latencyMs) {
-    if (!event || event.cue_type === "none" || event.notified === false) {
-      if (latencyMs != null) els.latency.textContent = `last analyze ${latencyMs} ms`;
+  function pushCue(event, hud, latencyMs, source) {
+    if (latencyMs != null) {
+      els.latency.textContent = `last analyze ${latencyMs} ms${source ? ` · ${source}` : ""}`;
+    }
+    if (!event) return;
+    // Still show HUD/latency for non-notify results so live mode doesn't look "stuck"
+    if (event.cue_type === "none" || event.notified === false) {
+      if (hud) renderHud(hud);
+      else if (latencyMs != null) {
+        els.hudBox.textContent = "No notify-worthy cue this tick (speak a clear question / wave).";
+      }
       return;
     }
+    const id = event.cue_id || `${event.t}-${event.cue}`;
+    if (state.seenCueIds.has(id)) {
+      if (hud) renderHud(hud);
+      return;
+    }
+    state.seenCueIds.add(id);
+
     const li = document.createElement("li");
     const title = document.createElement("div");
     const strong = document.createElement("strong");
@@ -135,7 +159,9 @@
     title.appendChild(strong);
     const meta = document.createElement("div");
     meta.className = "meta";
+    const src = source || event.source || "";
     let metaText = `${event.cue_type || ""} · conf ${(event.confidence ?? 0).toFixed(2)}`;
+    if (src) metaText += ` · ${src}`;
     if (event.suggested_response) metaText += ` · reply: ${event.suggested_response}`;
     meta.textContent = metaText;
     li.appendChild(title);
@@ -143,43 +169,71 @@
     els.cueList.prepend(li);
     while (els.cueList.children.length > 12) els.cueList.lastChild.remove();
 
-    state.recentCues.unshift(event.cue);
-    state.recentCues = state.recentCues.slice(0, 5);
-
+    if (event.cue) {
+      state.recentCues.unshift(event.cue);
+      state.recentCues = state.recentCues.slice(0, 5);
+    }
     renderHud(hud);
-    if (latencyMs != null) els.latency.textContent = `last analyze ${latencyMs} ms`;
   }
 
   async function startSession() {
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      toast("Camera needs http://localhost (or HTTPS). Open http://localhost:8000/web/live.html");
+      return;
+    }
+
     state.stopped = false;
-    const sess = await api.createSession();
-    state.sessionId = sess.session_id;
-    state.startedAt = performance.now();
-    state.finals = [];
-    state.recentCues = [];
-    els.cueList.innerHTML = "";
-    renderHud(null);
+    let sess = null;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: true,
+      });
+      state.stream = stream;
+      els.preview.srcObject = stream;
+      els.badge.classList.add("visible");
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" },
-      audio: true,
-    });
-    state.stream = stream;
-    els.preview.srcObject = stream;
-    els.badge.classList.add("visible");
-
-    els.consent.classList.add("hidden");
-    els.app.classList.add("active");
-    els.discardBtn.classList.add("hidden");
-
-    state.ws = api.openWs(state.sessionId, (msg) => {
-      if (msg && msg.event && msg.event.type === "social_cue") {
-        pushCue(msg.event, msg.hud, null);
+      sess = await api.createSession();
+      state.sessionId = sess.session_id;
+      state.startedAt = performance.now();
+      state.finals = [];
+      state.recentCues = [];
+      state.seenCueIds = new Set();
+      els.cueList.innerHTML = "";
+      renderHud(null);
+      const hudLink = document.getElementById("hudLink");
+      if (hudLink) {
+        hudLink.href = `hud.html?session=${encodeURIComponent(state.sessionId)}`;
       }
-    });
+      const recapLink = document.querySelector('nav a[href="recap.html"]');
+      if (recapLink) {
+        recapLink.href = `recap.html?session=${encodeURIComponent(state.sessionId)}`;
+      }
 
-    startSpeech();
-    startFrameLoop();
+      els.consent.classList.add("hidden");
+      els.app.classList.add("active");
+      els.discardBtn.classList.add("hidden");
+
+      state.ws = api.openWs(state.sessionId, (msg) => {
+        if (msg && msg.event && msg.event.type === "social_cue") {
+          pushCue(msg.event, msg.hud, null, msg.event.source);
+        }
+      });
+
+      startSpeech();
+      startFrameLoop();
+    } catch (err) {
+      stopTracks();
+      if (sess && sess.session_id) {
+        try {
+          await api.deleteSession(sess.session_id);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+      state.sessionId = null;
+      throw err;
+    }
   }
 
   function trackLive() {
@@ -329,11 +383,14 @@
 
   function startFrameLoop() {
     stopFrameLoop();
-    state.frameTimer = setInterval(() => {
-      tickAnalyze().catch(onFatal);
-    }, 3000);
-    // first tick slightly delayed so video has frames
-    setTimeout(() => tickAnalyze().catch(onFatal), 500);
+    const kick = () => tickAnalyze().catch(onFatal);
+    const onReady = () => {
+      els.preview.removeEventListener("loadeddata", onReady);
+      kick();
+    };
+    if (els.preview.videoWidth) kick();
+    else els.preview.addEventListener("loadeddata", onReady);
+    state.frameTimer = setInterval(kick, 3000);
   }
 
   async function tickAnalyze() {
@@ -341,6 +398,7 @@
     if (!trackLive() && !api.MOCK) return;
 
     const image_b64 = grabJpegB64();
+    if (!image_b64 && !api.MOCK) return; // wait until a real frame exists
     const transcript_window = rollingTranscript();
     const t = (performance.now() - state.startedAt) / 1000;
 
@@ -352,9 +410,9 @@
         transcript_window,
         image_b64: image_b64 || null,
         input_kind: "live_camera",
-        context_cues: state.recentCues,
       });
-      pushCue(res.event, res.hud, res.latency_ms);
+      // Prefer WS for list items; HTTP updates latency + fills if WS missed it.
+      pushCue(res.event, res.hud, res.latency_ms, res.source || (res.event && res.event.source));
     } catch (err) {
       if (err && err.status === 429) return;
       throw err;
