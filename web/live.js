@@ -45,11 +45,39 @@
     stopped: false,
   };
 
+  const textOnlyBtn = document.getElementById("textOnlyBtn");
+
   els.consentCheck.addEventListener("change", () => {
-    els.startBtn.disabled = !els.consentCheck.checked;
+    const ok = els.consentCheck.checked;
+    els.startBtn.disabled = !ok;
+    if (textOnlyBtn) textOnlyBtn.disabled = !ok;
   });
 
-  els.startBtn.addEventListener("click", () => startSession().catch(onFatal));
+  function resetSessionLocal() {
+    state.stopped = false;
+    state.sessionId = null;
+    state.startedAt = performance.now();
+    state.finals = [];
+    state.recentCues = [];
+    state.seenCueIds = new Set();
+    els.cueList.innerHTML = "";
+    els.transcript.textContent = "";
+    els.interim.textContent = "";
+    renderHud(null);
+  }
+
+  // SpeechRecognition.start() MUST run inside the click stack (before any await).
+  els.startBtn.addEventListener("click", () => {
+    resetSessionLocal();
+    startSpeech(); // sync — keeps user-gesture / mic permission
+    startSession({ camera: true }).catch(onFatal);
+  });
+  if (textOnlyBtn) {
+    textOnlyBtn.addEventListener("click", () => {
+      resetSessionLocal();
+      startSession({ camera: false }).catch(onFatal);
+    });
+  }
   els.stopBtn.addEventListener("click", () => stopCapture({ offerDiscard: true }));
   els.discardBtn.addEventListener("click", () => discardSession().catch(onFatal));
 
@@ -207,39 +235,38 @@
     renderHud(hud);
   }
 
-  async function startSession() {
-    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      toast("Camera needs http://localhost (or HTTPS). Open http://localhost:8000/web/live.html");
-      return;
-    }
-
-    state.stopped = false;
+  async function startSession({ camera } = { camera: true }) {
+    // NOTE: startSpeech() is invoked from the click handler BEFORE this await chain.
     let sess = null;
     try {
-      // Video only for frames. Do NOT grab audio here — an active
-      // getUserMedia audio track blocks webkitSpeechRecognition on Chrome.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" },
-        audio: false,
-      });
-      state.stream = stream;
-      els.preview.srcObject = stream;
-      els.badge.classList.add("visible");
-      els.badge.textContent = "● Capturing camera (mic via speech / type box)";
-
+      // Create session first so captions have an id as soon as speech finals arrive.
       sess = await api.createSession();
       state.sessionId = sess.session_id;
-      state.startedAt = performance.now();
-      state.finals = [];
-      state.recentCues = [];
-      state.seenCueIds = new Set();
-      els.cueList.innerHTML = "";
-      renderHud(null);
+
+      if (camera) {
+        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+          toast("Camera needs http://localhost:8000/web/live.html — or use Text-only test");
+          return;
+        }
+        // Video only. Audio MediaStream blocks webkitSpeechRecognition on Chrome.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false,
+        });
+        state.stream = stream;
+        els.preview.srcObject = stream;
+        els.badge.classList.add("visible");
+        els.badge.textContent = "● Camera on — speak OR type below";
+      } else {
+        els.badge.classList.remove("visible");
+        els.preview.srcObject = null;
+      }
+
       const hudLink = document.getElementById("hudLink");
       if (hudLink) {
         hudLink.href = `hud.html?session=${encodeURIComponent(state.sessionId)}`;
       }
-      const recapLink = document.querySelector('nav a[href="recap.html"]');
+      const recapLink = document.querySelector('nav a[href^="recap.html"]');
       if (recapLink) {
         recapLink.href = `recap.html?session=${encodeURIComponent(state.sessionId)}`;
       }
@@ -254,18 +281,28 @@
         }
       });
 
-      startSpeech();
-      startFrameLoop();
-      // If speech never produces text, nudge the user toward the type box.
-      setTimeout(() => {
-        if (!state.stopped && state.finals.length === 0) {
-          els.chromeWarn.classList.add("visible");
-          els.chromeWarn.textContent =
-            "No speech yet — use Google Chrome, or type a line in the box below (most reliable).";
-          toast("No transcript yet. Type: Vaibhav, want to come to dinner Friday?");
-        }
-      }, 4000);
+      if (camera) {
+        // Restart speech now that session exists (in case the primed one died).
+        if (!state.recognition) startSpeech();
+        startFrameLoop();
+        setTimeout(() => {
+          if (!state.stopped && state.finals.length === 0) {
+            els.chromeWarn.classList.add("visible");
+            els.chromeWarn.textContent =
+              "Still no speech text. Use the box below — waiting will not help.";
+            toast("Type a line and press Enter to see transcript + cues.");
+            typeInput?.focus();
+          }
+        }, 3000);
+      } else {
+        els.chromeWarn.classList.add("visible");
+        els.chromeWarn.textContent =
+          "Text-only mode: type below and press Enter. Text must appear in Transcript.";
+        toast("Type: Vaibhav, want to come to dinner Friday?");
+        setTimeout(() => typeInput?.focus(), 50);
+      }
     } catch (err) {
+      stopSpeech();
       stopTracks();
       if (sess && sess.session_id) {
         try {
@@ -351,13 +388,24 @@
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
       els.chromeWarn.classList.add("visible");
+      els.chromeWarn.textContent =
+        "This browser has no SpeechRecognition. Use Google Chrome, or type below.";
       return;
     }
-    els.chromeWarn.classList.remove("visible");
+    // Tear down any prior instance
+    stopSpeech();
+
     const rec = new SR();
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = "en-US";
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => {
+      els.chromeWarn.classList.add("visible");
+      els.chromeWarn.textContent = "Listening… speak clearly, or type below if nothing appears.";
+      els.interim.textContent = "(listening)";
+    };
 
     rec.onresult = (ev) => {
       let interim = "";
@@ -366,52 +414,64 @@
         const text = (r[0] && r[0].transcript ? r[0].transcript : "").trim();
         if (!text) continue;
         if (r.isFinal) {
-          const t = (performance.now() - state.startedAt) / 1000;
+          const t = state.startedAt
+            ? (performance.now() - state.startedAt) / 1000
+            : 0;
           state.finals.push({ t, text });
           renderTranscript();
-          const tStart = Math.max(0, t - 2);
-          api
-            .postCaption(state.sessionId, {
-              t_start: tStart,
-              t_end: t,
-              text,
-            })
-            .catch(onFatal);
+          console.log("[speech final]", text);
+          if (state.sessionId) {
+            api
+              .postCaption(state.sessionId, {
+                t_start: Math.max(0, t - 2),
+                t_end: t,
+                text,
+              })
+              .catch(onFatal);
+            tickAnalyze().catch(onFatal);
+          }
         } else {
           interim += text + " ";
         }
       }
-      els.interim.textContent = interim.trim();
+      els.interim.textContent = interim.trim() || "(listening)";
     };
 
     rec.onerror = (ev) => {
-      if (ev.error === "no-speech" || ev.error === "aborted") return;
-      console.warn("[speech]", ev.error);
-      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
-        els.chromeWarn.classList.add("visible");
-        els.chromeWarn.textContent =
-          "Speech blocked — use Google Chrome, allow microphone, or type a line below to test.";
-        toast("Speech recognition blocked. Type a caption below to test analyze.");
-      } else if (ev.error === "network") {
-        toast("Speech needs network (Chrome → Google STT). Type a line below to test offline-ish.");
+      console.warn("[speech error]", ev.error);
+      if (ev.error === "aborted") return;
+      if (ev.error === "no-speech") {
+        els.interim.textContent = "(no speech heard — keep talking or type below)";
+        return;
       }
+      els.chromeWarn.classList.add("visible");
+      els.chromeWarn.textContent = `Speech error: ${ev.error}. Type a line below to continue.`;
+      toast(`Speech error: ${ev.error}`);
     };
 
     rec.onend = () => {
-      if (!state.stopped && trackLive()) {
+      state.recognition = null;
+      if (state.stopped) return;
+      // Restart even without camera tracks (speech should keep running).
+      setTimeout(() => {
+        if (state.stopped || state.recognition) return;
         try {
-          rec.start();
+          startSpeech();
         } catch (_) {
           /* ignore */
         }
-      }
+      }, 250);
     };
 
     state.recognition = rec;
     try {
       rec.start();
+      console.log("[speech] started");
     } catch (err) {
-      onFatal(err);
+      console.error("[speech] start failed", err);
+      els.chromeWarn.classList.add("visible");
+      els.chromeWarn.textContent = "Could not start speech. Type below instead.";
+      toast("Could not start speech recognition — use the type box.");
     }
   }
 
@@ -446,11 +506,13 @@
 
   async function tickAnalyze() {
     if (state.stopped || state.analyzing || !state.sessionId) return;
-    if (!trackLive() && !api.MOCK) return;
-
-    const image_b64 = grabJpegB64();
-    if (!image_b64 && !api.MOCK) return; // wait until a real frame exists
+    const hasCamera = trackLive();
     const transcript_window = rollingTranscript();
+    // Text-only sessions analyze on transcript; camera sessions need a frame.
+    if (!hasCamera && !transcript_window.trim() && !api.MOCK) return;
+
+    const image_b64 = hasCamera ? grabJpegB64() : null;
+    if (hasCamera && !image_b64 && !api.MOCK) return;
     const t = (performance.now() - state.startedAt) / 1000;
 
     state.analyzing = true;

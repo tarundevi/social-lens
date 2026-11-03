@@ -108,7 +108,17 @@
       overflow: auto;
       color: var(--text);
     }
-    #interim { color: var(--muted); font-style: italic; }
+    #interim {
+      color: #4fc3f7;
+      font-style: italic;
+      min-height: 1.2em;
+      margin-top: 0.35rem;
+    }
+    #transcript:empty::before {
+      content: "(no final lines yet — speak or type below)";
+      color: var(--muted);
+      font-style: italic;
+    }
     #chromeWarn {
       display: none;
       color: #ffcc80;
@@ -176,7 +186,13 @@
       <input type="checkbox" id="consentCheck" />
       <span>I understand and allow camera + microphone access for this session.</span>
     </label>
-    <button id="startBtn" type="button" disabled>Start live session</button>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+      <button id="startBtn" type="button" disabled>Start live session</button>
+      <button id="textOnlyBtn" type="button" class="secondary" disabled>Text-only test (no camera)</button>
+    </div>
+    <p style="color:#8b9bb4;font-size:0.85rem;margin:0.75rem 0 0">
+      Speech often fails. After start, type in the Transcript box and press Enter — text should appear immediately.
+    </p>
   </section>
 
   <main id="app">
@@ -219,11 +235,11 @@
 
   <div id="toasts" aria-live="polite"></div>
 
-  <script src="api.js"></script>
+  <script src="api.js?v=3"></script>
   <script type="module">
-    import { renderHud } from "./hud.js";
+    import { renderHud } from "./hud.js?v=3";
     window.renderHud = renderHud;
-    await import("./live.js");
+    await import("./live.js?v=3");
   </script>
 </body>
 </html>
