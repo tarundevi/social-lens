@@ -216,13 +216,16 @@
     state.stopped = false;
     let sess = null;
     try {
+      // Video only for frames. Do NOT grab audio here — an active
+      // getUserMedia audio track blocks webkitSpeechRecognition on Chrome.
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user" },
-        audio: true,
+        audio: false,
       });
       state.stream = stream;
       els.preview.srcObject = stream;
       els.badge.classList.add("visible");
+      els.badge.textContent = "● Capturing camera (mic via speech / type box)";
 
       sess = await api.createSession();
       state.sessionId = sess.session_id;
@@ -253,6 +256,15 @@
 
       startSpeech();
       startFrameLoop();
+      // If speech never produces text, nudge the user toward the type box.
+      setTimeout(() => {
+        if (!state.stopped && state.finals.length === 0) {
+          els.chromeWarn.classList.add("visible");
+          els.chromeWarn.textContent =
+            "No speech yet — use Google Chrome, or type a line in the box below (most reliable).";
+          toast("No transcript yet. Type: Vaibhav, want to come to dinner Friday?");
+        }
+      }, 4000);
     } catch (err) {
       stopTracks();
       if (sess && sess.session_id) {
