@@ -20,6 +20,16 @@
     return `/contracts/fixtures/${name}`;
   }
 
+  function errorMessage(body, fallback) {
+    if (!body) return fallback;
+    if (typeof body.error === "string") return body.error;
+    const d = body.detail;
+    if (typeof d === "string") return d;
+    if (d && typeof d === "object" && typeof d.error === "string") return d.error;
+    if (Array.isArray(d) && d[0] && d[0].msg) return d.map((x) => x.msg).join("; ");
+    return fallback;
+  }
+
   async function getJson(url, options) {
     const res = await fetch(url, options);
     if (!res.ok) {
@@ -29,7 +39,7 @@
       } catch (_) {
         /* ignore */
       }
-      const err = new Error((body && body.error) || res.statusText || String(res.status));
+      const err = new Error(errorMessage(body, res.statusText || String(res.status)));
       err.status = res.status;
       err.body = body;
       throw err;
