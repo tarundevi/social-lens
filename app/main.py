@@ -273,7 +273,7 @@ def health() -> dict[str, Any]:
     return {
         "ok": True,
         "grok": "configured" if grok.configured() else "missing_key",
-        "model": os.getenv("XAI_MODEL", "grok-4.7"),
+        "model": os.getenv("XAI_MODEL", "grok-4.20-0309-non-reasoning"),
     }
 
 
@@ -351,7 +351,7 @@ async def analyze(body: AnalyzeIn) -> dict[str, Any]:
                     recent_cues=recent,
                 )
                 source = "grok"
-                model_version = os.getenv("XAI_MODEL", "grok-4.7")
+                model_version = os.getenv("XAI_MODEL", "grok-4.20-0309-non-reasoning")
             except grok.GrokUnavailable:
                 if body.scenario_id:
                     canned = get_canned(body.scenario_id)
