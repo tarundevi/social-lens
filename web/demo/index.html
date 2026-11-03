@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SocialLens Demo Mode</title>
+<style>
+  body { margin: 0; padding: 16px; background: #121212; color: #eceff1; font: 15px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.note { opacity: .7; margin: 0 0 16px; }
+</style>
+</head>
+<body>
+<h1>SocialLens: Demo mode</h1>
+<p class="note">Scripted DEMO INPUT scenarios (drawn placeholders, no camera). Add <code>?mock=1</code> to run without the backend.</p>
+<div id="demo"></div>
+<script type="module">
+  import { mountDemo } from "../demo.js";
+
+  // Standalone harness for web/demo.js. Prefers C2's web/api.js once it exists; otherwise a
+  // minimal client that follows API_SPEC.md (real backend) or CONTRACTS.md mock mode (?mock=1).
+  const MOCK = new URLSearchParams(location.search).get("mock") === "1";
+  const root = new URL("../../", import.meta.url);
+
+  async function getJson(path, init) {
+    const r = await fetch(new URL(path, root), init);
+    if (!r.ok) throw Object.assign(new Error(`${r.status} ${path}`), { status: r.status });
+    return r.json();
+  }
+
+  async function cannedFromData(id) {
+    const rows = await getJson("data/scenarios.json");
+    const s = rows.find((x) => x.id === id);
+    return { event: { type: "social_cue", ...s.canned, t: s.t, notified: s.canned.should_notify,
+      source: "canned", input_kind: "demo_input", model_version: "canned-v0" },
+      hud: null, source: "canned", latency_ms: 0 };
+  }
+
+  const fallbackApi = {
+    health: () => MOCK
+      ? getJson("contracts/fixtures/health.json").catch(() => ({ ok: true, grok: "missing_key", model: "mock" }))
+      : getJson("api/health"),
+    createSession: () => MOCK ? Promise.resolve({ session_id: "demo" })
+      : getJson("api/sessions", { method: "POST" }),
+    analyze: (req) => MOCK
+      ? getJson(`contracts/fixtures/analyze_${req.scenario_id}.json`).catch(() => cannedFromData(req.scenario_id))
+      : getJson("api/analyze", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify(req) }),
+  };
+
+  let api = fallbackApi;
+  try {
+    const mod = await import("../api.js");
+    if (typeof mod.analyze === "function" && typeof mod.health === "function") api = mod;
+  } catch { /* api.js not merged yet */ }
+
+  window.demo = mountDemo(document.getElementById("demo"), api);
+</script>
+</body>
+</html>
