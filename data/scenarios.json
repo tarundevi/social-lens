@@ -1,0 +1,53 @@
+[
+  {
+    "id": "dinner",
+    "title": "Dinner invite",
+    "image": "demo/dinner.jpg",
+    "transcript": ["[0:10] Someone: hey", "[0:12] Someone: Vaibhav, want to come to dinner Friday?"],
+    "t": 15.0,
+    "fixture": "analyze_dinner.json",
+    "canned": {
+      "cue_type": "question_to_you",
+      "cue": "They asked you to dinner Friday",
+      "visual_evidence": "Person facing you, open hand gesture toward you",
+      "audio_evidence": "\"Vaibhav, want to come to dinner Friday?\"",
+      "suggested_response": "I'd love to! What time?",
+      "confidence": 0.92,
+      "should_notify": true
+    }
+  },
+  {
+    "id": "sarcasm",
+    "title": "Sarcasm",
+    "image": "demo/sarcasm.jpg",
+    "transcript": ["[0:40] Someone: Oh great, another three-hour meeting."],
+    "t": 42.5,
+    "fixture": "analyze_sarcasm.json",
+    "canned": {
+      "cue_type": "sarcasm_or_joke",
+      "cue": "Likely sarcasm: not excited about the meeting",
+      "visual_evidence": "Exaggerated shrug while looking at a calendar",
+      "audio_evidence": "\"Oh great, another three-hour meeting\": 'great' + complaint pattern",
+      "suggested_response": "Ha, yeah, long one. Coffee first?",
+      "confidence": 0.78,
+      "should_notify": true
+    }
+  },
+  {
+    "id": "wave",
+    "title": "Wave greeting",
+    "image": "demo/wave.jpg",
+    "transcript": [],
+    "t": 61.0,
+    "fixture": "analyze_wave.json",
+    "canned": {
+      "cue_type": "greeting_gesture",
+      "cue": "Someone is waving at you",
+      "visual_evidence": "Raised open hand waving, facing the camera",
+      "audio_evidence": null,
+      "suggested_response": "Wave back and say hi",
+      "confidence": 0.88,
+      "should_notify": true
+    }
+  }
+]
