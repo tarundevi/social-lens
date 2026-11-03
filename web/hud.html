@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SocialLens HUD</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="hud-status" id="status"></div>
+<div class="hud-stage">
+  <div class="hud-panel hud-empty" id="panel"></div>
+</div>
+<script type="module">
+import { renderHud } from "./hud.js";
+
+const panel = document.getElementById("panel");
+const statusEl = document.getElementById("status");
+const params = new URLSearchParams(location.search);
+
+function setStatus(text) {
+  statusEl.textContent = text;
+}
+
+/** A message is {event, hud}. hud is null for "nothing new to show" (e.g. a
+ * deduped repeat) -- the current cue, if any, is left on screen until its own ttl. */
+function handleMessage(msg) {
+  if (msg && msg.hud) renderHud(panel, msg.hud);
+}
+
+async function runMock() {
+  setStatus("mock replay");
+  const res = await fetch("mock/ws_stream.jsonl");
+  const text = await res.text();
+  const lines = text.trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  let t = 0;
+  for (const line of lines) {
+    t += line._delay_ms || 0;
+    setTimeout(() => handleMessage(line), t);
+  }
+}
+
+function runWs(sessionId) {
+  const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+  const replay = params.get("replay") || "1";
+  const speed = params.get("speed") || "1.0";
+  const url = `${wsProto}//${location.host}/ws/sessions/${sessionId}?replay=${replay}&speed=${speed}`;
+  setStatus("connecting…");
+  const ws = new WebSocket(url);
+  ws.onopen = () => setStatus(`session ${sessionId}`);
+  ws.onmessage = (ev) => {
+    try {
+      handleMessage(JSON.parse(ev.data));
+    } catch (err) {
+      console.error("bad ws message", err);
+    }
+  };
+  ws.onerror = () => setStatus("ws error");
+  ws.onclose = () => setStatus("disconnected");
+}
+
+if (params.get("mock") === "1") {
+  runMock();
+} else {
+  const sessionId = params.get("session") || "sample";
+  runWs(sessionId);
+}
+</script>
+</body>
+</html>
