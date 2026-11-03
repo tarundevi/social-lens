@@ -110,6 +110,31 @@ async def analyze_frame(
         raise GrokUnavailable(str(type(exc).__name__)) from None
 
 
+async def transcribe(file_bytes: bytes, filename: str = "audio.webm", content_type: str = "audio/webm") -> str:
+    """POST multipart to xAI /stt. Returns transcript text."""
+    key = _key()
+    if not key:
+        raise GrokUnavailable("missing_key")
+    model = os.getenv("XAI_STT_MODEL", "grok-voice-transcribe-2.0")
+    headers = {"Authorization": f"Bearer {key}"}
+    files = {"file": (filename, file_bytes, content_type)}
+    data = {"model": model, "language": "en"}
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(f"{_base()}/stt", headers=headers, data=data, files=files)
+            if r.status_code >= 400:
+                raise GrokUnavailable(f"stt http {r.status_code}: {r.text[:200]}")
+            payload = r.json()
+            text = payload.get("text")
+            if not isinstance(text, str):
+                raise GrokUnavailable("stt missing text")
+            return text.strip()
+    except GrokUnavailable:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise GrokUnavailable(str(type(exc).__name__)) from None
+
+
 async def recap(compact_log: str, user_name: str) -> dict[str, Any]:
     """POST chat/completions with RecapOutput json_schema."""
     key = _key()

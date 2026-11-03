@@ -43,13 +43,50 @@
     recentCues: [],
     seenCueIds: new Set(),
     stopped: false,
+    speechNetworkFails: 0,
+    speechDisabled: false,
+    lastToastAt: 0,
+    mediaRecorder: null,
+    micStream: null,
+    sttBusy: false,
+    sttLooping: false,
   };
 
+  const textOnlyBtn = document.getElementById("textOnlyBtn");
+
   els.consentCheck.addEventListener("change", () => {
-    els.startBtn.disabled = !els.consentCheck.checked;
+    const ok = els.consentCheck.checked;
+    els.startBtn.disabled = !ok;
+    if (textOnlyBtn) textOnlyBtn.disabled = !ok;
   });
 
-  els.startBtn.addEventListener("click", () => startSession().catch(onFatal));
+  function resetSessionLocal() {
+    state.stopped = false;
+    state.speechDisabled = false;
+    state.speechNetworkFails = 0;
+    state.sessionId = null;
+    state.startedAt = performance.now();
+    state.finals = [];
+    state.recentCues = [];
+    state.seenCueIds = new Set();
+    els.cueList.innerHTML = "";
+    els.transcript.textContent = "";
+    els.interim.textContent = "";
+    els.toasts.innerHTML = "";
+    renderHud(null);
+  }
+
+  els.startBtn.addEventListener("click", () => {
+    resetSessionLocal();
+    // Prefer xAI STT via MediaRecorder (works when Chrome→Google STT is blocked).
+    startSession({ camera: true }).catch(onFatal);
+  });
+  if (textOnlyBtn) {
+    textOnlyBtn.addEventListener("click", () => {
+      resetSessionLocal();
+      startSession({ camera: false }).catch(onFatal);
+    });
+  }
   els.stopBtn.addEventListener("click", () => stopCapture({ offerDiscard: true }));
   els.discardBtn.addEventListener("click", () => discardSession().catch(onFatal));
 
@@ -109,7 +146,10 @@
       toast("Backend not reachable. Start: uvicorn app.main:app --port 8000 — then open http://localhost:8000/web/live.html");
     });
 
-  function toast(msg) {
+  function toast(msg, { force } = {}) {
+    const now = Date.now();
+    if (!force && now - state.lastToastAt < 2500) return; // prevent toast storms
+    state.lastToastAt = now;
     const el = document.createElement("div");
     el.className = "toast";
     el.textContent = msg;
@@ -207,39 +247,38 @@
     renderHud(hud);
   }
 
-  async function startSession() {
-    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      toast("Camera needs http://localhost (or HTTPS). Open http://localhost:8000/web/live.html");
-      return;
-    }
-
-    state.stopped = false;
+  async function startSession({ camera } = { camera: true }) {
+    // NOTE: startSpeech() is invoked from the click handler BEFORE this await chain.
     let sess = null;
     try {
-      // Video only for frames. Do NOT grab audio here — an active
-      // getUserMedia audio track blocks webkitSpeechRecognition on Chrome.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" },
-        audio: false,
-      });
-      state.stream = stream;
-      els.preview.srcObject = stream;
-      els.badge.classList.add("visible");
-      els.badge.textContent = "● Capturing camera (mic via speech / type box)";
-
+      // Create session first so captions have an id as soon as speech finals arrive.
       sess = await api.createSession();
       state.sessionId = sess.session_id;
-      state.startedAt = performance.now();
-      state.finals = [];
-      state.recentCues = [];
-      state.seenCueIds = new Set();
-      els.cueList.innerHTML = "";
-      renderHud(null);
+
+      if (camera) {
+        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+          toast("Camera needs http://localhost:8000/web/live.html — or use Text-only test");
+          return;
+        }
+        // Video only. Audio MediaStream blocks webkitSpeechRecognition on Chrome.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false,
+        });
+        state.stream = stream;
+        els.preview.srcObject = stream;
+        els.badge.classList.add("visible");
+        els.badge.textContent = "● Camera on — speak OR type below";
+      } else {
+        els.badge.classList.remove("visible");
+        els.preview.srcObject = null;
+      }
+
       const hudLink = document.getElementById("hudLink");
       if (hudLink) {
         hudLink.href = `hud.html?session=${encodeURIComponent(state.sessionId)}`;
       }
-      const recapLink = document.querySelector('nav a[href="recap.html"]');
+      const recapLink = document.querySelector('nav a[href^="recap.html"]');
       if (recapLink) {
         recapLink.href = `recap.html?session=${encodeURIComponent(state.sessionId)}`;
       }
@@ -254,18 +293,31 @@
         }
       });
 
-      startSpeech();
-      startFrameLoop();
-      // If speech never produces text, nudge the user toward the type box.
-      setTimeout(() => {
-        if (!state.stopped && state.finals.length === 0) {
-          els.chromeWarn.classList.add("visible");
-          els.chromeWarn.textContent =
-            "No speech yet — use Google Chrome, or type a line in the box below (most reliable).";
-          toast("No transcript yet. Type: Vaibhav, want to come to dinner Friday?");
+      if (camera) {
+        const health = await api.health().catch(() => null);
+        if (!api.MOCK && health && health.grok === "configured") {
+          await startXaiStt();
+        } else {
+          startSpeech();
         }
-      }, 4000);
+        startFrameLoop();
+        setTimeout(() => {
+          if (!state.stopped && state.finals.length === 0) {
+            els.chromeWarn.classList.add("visible");
+            els.chromeWarn.textContent =
+              "No transcript yet — keep speaking, or type below.";
+            typeInput?.focus();
+          }
+        }, 8000);
+      } else {
+        els.chromeWarn.classList.add("visible");
+        els.chromeWarn.textContent =
+          "Text-only mode: type below and press Enter. Text must appear in Transcript.";
+        toast("Type: Vaibhav, want to come to dinner Friday?");
+        setTimeout(() => typeInput?.focus(), 50);
+      }
     } catch (err) {
+      stopSpeech();
       stopTracks();
       if (sess && sess.session_id) {
         try {
@@ -313,10 +365,198 @@
     }
   }
 
+  function stopXaiStt() {
+    state.sttLooping = false;
+    try {
+      if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
+        state.mediaRecorder.ondataavailable = null;
+        state.mediaRecorder.stop();
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    state.mediaRecorder = null;
+    if (state.micStream) {
+      state.micStream.getTracks().forEach((t) => t.stop());
+      state.micStream = null;
+    }
+  }
+
+  function encodeWav(audioBuffer) {
+    const numChannels = 1;
+    const sampleRate = audioBuffer.sampleRate;
+    const source = audioBuffer.getChannelData(0);
+    // Downmix if needed
+    let samples = source;
+    if (audioBuffer.numberOfChannels > 1) {
+      const ch1 = audioBuffer.getChannelData(1);
+      samples = new Float32Array(source.length);
+      for (let i = 0; i < source.length; i++) samples[i] = (source[i] + ch1[i]) * 0.5;
+    }
+    // Resample to 16k for STT friendliness
+    const targetRate = 16000;
+    const ratio = sampleRate / targetRate;
+    const newLen = Math.floor(samples.length / ratio);
+    const resampled = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) resampled[i] = samples[Math.floor(i * ratio)] || 0;
+
+    const dataLength = resampled.length * 2;
+    const buffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(buffer);
+    const writeStr = (off, str) => {
+      for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+    };
+    writeStr(0, "RIFF");
+    view.setUint32(4, 36 + dataLength, true);
+    writeStr(8, "WAVE");
+    writeStr(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, targetRate, true);
+    view.setUint32(28, targetRate * numChannels * 2, true);
+    view.setUint16(32, numChannels * 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, "data");
+    view.setUint32(40, dataLength, true);
+    let offset = 44;
+    for (let i = 0; i < resampled.length; i++) {
+      const s = Math.max(-1, Math.min(1, resampled[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      offset += 2;
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  async function blobToWav(blob) {
+    const ctx = new AudioContext();
+    try {
+      const arr = await blob.arrayBuffer();
+      const audioBuf = await ctx.decodeAudioData(arr.slice(0));
+      return encodeWav(audioBuf);
+    } finally {
+      await ctx.close().catch(() => {});
+    }
+  }
+
+  function recordCompleteChunk(stream, mime, ms) {
+    return new Promise((resolve, reject) => {
+      const parts = [];
+      let rec;
+      try {
+        rec = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 64000 });
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      state.mediaRecorder = rec;
+      rec.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size) parts.push(ev.data);
+      };
+      rec.onerror = (ev) => reject(ev.error || new Error("MediaRecorder error"));
+      rec.onstop = () => {
+        resolve(new Blob(parts, { type: mime }));
+      };
+      rec.start(); // complete file (no timeslice) — timeslice webm is invalid for STT
+      setTimeout(() => {
+        if (rec.state !== "inactive") {
+          try {
+            rec.stop();
+          } catch (_) {
+            resolve(new Blob(parts, { type: mime }));
+          }
+        }
+      }, ms);
+    });
+  }
+
+  async function startXaiStt() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      disableSpeech("No mic API — type below.");
+      return;
+    }
+    try {
+      const mic = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          channelCount: 1,
+        },
+        video: false,
+      });
+      state.micStream = mic;
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      if (!mime) {
+        disableSpeech("MediaRecorder unsupported — type below.");
+        return;
+      }
+
+      state.sttLooping = true;
+      els.chromeWarn.classList.add("visible");
+      els.chromeWarn.textContent =
+        "Listening via xAI STT (WAV). Speak clearly; text every ~3s.";
+      els.interim.textContent = "(listening via xAI)";
+      console.log("[stt] loop starting", mime);
+
+      // Fire-and-forget loop
+      void (async () => {
+        while (state.sttLooping && !state.stopped && state.micStream) {
+          try {
+            const raw = await recordCompleteChunk(state.micStream, mime, 3000);
+            if (!state.sttLooping || state.stopped) break;
+            if (!raw || raw.size < 500) continue;
+            let wav;
+            try {
+              wav = await blobToWav(raw);
+            } catch (decodeErr) {
+              console.warn("[stt] decode failed, skipping chunk", decodeErr);
+              continue;
+            }
+            await handleSttChunk(wav);
+          } catch (err) {
+            console.error("[stt] chunk loop", err);
+            if (state.stopped || !state.sttLooping) break;
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+      })();
+    } catch (err) {
+      console.error("[stt] mic failed", err);
+      disableSpeech("Mic permission denied for STT. Allow mic, or type below.");
+    }
+  }
+
+  async function handleSttChunk(blob) {
+    if (!state.sessionId || state.stopped) return;
+    state.sttBusy = true;
+    els.interim.textContent = "(transcribing…)";
+    try {
+      const res = await api.stt(blob);
+      const text = (res && res.text ? String(res.text) : "").trim();
+      if (!text) {
+        els.interim.textContent = "(listening via xAI)";
+        return;
+      }
+      injectCaption(text);
+      els.interim.textContent = "(listening via xAI)";
+    } catch (err) {
+      console.error("[stt]", err);
+      els.interim.textContent = "(STT error — type below works)";
+      toast(`STT: ${(err && err.message) || err}`, { force: false });
+    } finally {
+      state.sttBusy = false;
+    }
+  }
+
   function stopCapture({ offerDiscard }) {
     state.stopped = true;
     stopFrameLoop();
     stopSpeech();
+    stopXaiStt();
     if (state.ws) {
       state.ws.close();
       state.ws = null;
@@ -347,71 +587,110 @@
     els.interim.textContent = "";
   }
 
+  function disableSpeech(reason) {
+    state.speechDisabled = true;
+    stopSpeech();
+    els.chromeWarn.classList.add("visible");
+    els.chromeWarn.textContent = reason;
+    els.interim.textContent = "";
+    toast(reason, { force: true });
+    typeInput?.focus();
+  }
+
   function startSpeech() {
+    if (state.speechDisabled || state.stopped) return;
+
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
-      els.chromeWarn.classList.add("visible");
+      disableSpeech("No SpeechRecognition in this browser. Type below (manual text works).");
       return;
     }
-    els.chromeWarn.classList.remove("visible");
+    stopSpeech();
+
     const rec = new SR();
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = "en-US";
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => {
+      state.speechNetworkFails = 0;
+      els.chromeWarn.classList.add("visible");
+      els.chromeWarn.textContent = "Listening… (Chrome→Google STT). If this fails, type below.";
+      els.interim.textContent = "(listening)";
+    };
 
     rec.onresult = (ev) => {
+      state.speechNetworkFails = 0;
       let interim = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const r = ev.results[i];
         const text = (r[0] && r[0].transcript ? r[0].transcript : "").trim();
         if (!text) continue;
         if (r.isFinal) {
-          const t = (performance.now() - state.startedAt) / 1000;
+          const t = state.startedAt
+            ? (performance.now() - state.startedAt) / 1000
+            : 0;
           state.finals.push({ t, text });
           renderTranscript();
-          const tStart = Math.max(0, t - 2);
-          api
-            .postCaption(state.sessionId, {
-              t_start: tStart,
-              t_end: t,
-              text,
-            })
-            .catch(onFatal);
+          console.log("[speech final]", text);
+          if (state.sessionId) {
+            api
+              .postCaption(state.sessionId, {
+                t_start: Math.max(0, t - 2),
+                t_end: t,
+                text,
+              })
+              .catch(onFatal);
+            tickAnalyze().catch(onFatal);
+          }
         } else {
           interim += text + " ";
         }
       }
-      els.interim.textContent = interim.trim();
+      els.interim.textContent = interim.trim() || "(listening)";
     };
 
     rec.onerror = (ev) => {
-      if (ev.error === "no-speech" || ev.error === "aborted") return;
-      console.warn("[speech]", ev.error);
-      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
-        els.chromeWarn.classList.add("visible");
-        els.chromeWarn.textContent =
-          "Speech blocked — use Google Chrome, allow microphone, or type a line below to test.";
-        toast("Speech recognition blocked. Type a caption below to test analyze.");
-      } else if (ev.error === "network") {
-        toast("Speech needs network (Chrome → Google STT). Type a line below to test offline-ish.");
+      console.warn("[speech error]", ev.error);
+      if (ev.error === "aborted") return;
+      if (ev.error === "no-speech") {
+        els.interim.textContent = "(no speech heard — keep talking or type below)";
+        return;
       }
+      if (ev.error === "network" || ev.error === "service-not-allowed" || ev.error === "not-allowed") {
+        state.speechNetworkFails += 1;
+        // Chrome Web Speech calls Google's cloud STT. VPN/firewall/offline → network.
+        // Stop restart loop after 1 failure so we don't spam toasts.
+        disableSpeech(
+          "Live mic STT blocked (Chrome→Google network error). Manual type box works — use that. Fix: disable VPN, allow Google, or chrome://settings/content/microphone"
+        );
+        return;
+      }
+      els.chromeWarn.classList.add("visible");
+      els.chromeWarn.textContent = `Speech error: ${ev.error}. Type below.`;
     };
 
     rec.onend = () => {
-      if (!state.stopped && trackLive()) {
+      state.recognition = null;
+      if (state.stopped || state.speechDisabled) return;
+      setTimeout(() => {
+        if (state.stopped || state.speechDisabled || state.recognition) return;
         try {
-          rec.start();
+          startSpeech();
         } catch (_) {
           /* ignore */
         }
-      }
+      }, 400);
     };
 
     state.recognition = rec;
     try {
       rec.start();
+      console.log("[speech] started");
     } catch (err) {
-      onFatal(err);
+      console.error("[speech] start failed", err);
+      disableSpeech("Could not start speech recognition. Type below (manual text works).");
     }
   }
 
@@ -446,11 +725,13 @@
 
   async function tickAnalyze() {
     if (state.stopped || state.analyzing || !state.sessionId) return;
-    if (!trackLive() && !api.MOCK) return;
-
-    const image_b64 = grabJpegB64();
-    if (!image_b64 && !api.MOCK) return; // wait until a real frame exists
+    const hasCamera = trackLive();
     const transcript_window = rollingTranscript();
+    // Text-only sessions analyze on transcript; camera sessions need a frame.
+    if (!hasCamera && !transcript_window.trim() && !api.MOCK) return;
+
+    const image_b64 = hasCamera ? grabJpegB64() : null;
+    if (hasCamera && !image_b64 && !api.MOCK) return;
     const t = (performance.now() - state.startedAt) / 1000;
 
     state.analyzing = true;
