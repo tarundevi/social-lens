@@ -233,7 +233,11 @@ def load_sample_events() -> list[dict[str, Any]]:
                 line = line.strip()
                 if not line:
                     continue
-                out.append(json.loads(line))
+                obj = json.loads(line)
+                # Graption replay logs wrap as {_replay_t, event}
+                if isinstance(obj, dict) and "event" in obj and "type" not in obj:
+                    obj = obj["event"]
+                out.append(obj)
             return out
     return []
 
@@ -464,13 +468,6 @@ async def recap(body: RecapIn) -> dict[str, Any]:
             result = await grok.recap(build_compact_log(events), USER_NAME)
             return {"source": "grok", "recap": result, "message": None}
         except grok.GrokUnavailable:
-            pass
-
-    # Prefer fixture for sample when no key (stable demo)
-    if body.session_id == "sample":
-        try:
-            return _load_fixture("recap.json")
-        except FileNotFoundError:
             pass
 
     return {
