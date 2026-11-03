@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gt-big-data/graption/schemas/social_cue.schema.json",
+  "title": "SocialCue (proposed Graption extension)",
+  "description": "Proposed new Graption event emitted by SocialLens. Same envelope rules as events.schema.json v1.2. To upstream: add to oneOf in events.schema.json and bump schema_version to 1.3.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "session_id", "schema_version", "cue_id", "t", "cue_type", "cue",
+               "visual_evidence", "audio_evidence", "suggested_response", "confidence",
+               "should_notify", "notified", "model_version"],
+  "properties": {
+    "type": {"const": "social_cue"},
+    "session_id": {"type": "string", "minLength": 1},
+    "schema_version": {"const": "1.2", "description": "Envelope version of the base schema this extends. Becomes 1.3 if merged upstream."},
+    "cue_id": {"type": "string", "format": "uuid"},
+    "t": {"type": "number", "minimum": 0, "description": "Seconds since session start (Graption convention)."},
+    "cue_type": {"enum": ["question_to_you", "sarcasm_or_joke", "greeting_gesture", "turn_taking", "other", "none"]},
+    "cue": {"type": "string", "maxLength": 80},
+    "visual_evidence": {"type": ["string", "null"], "maxLength": 200},
+    "audio_evidence": {"type": ["string", "null"], "maxLength": 200},
+    "suggested_response": {"type": ["string", "null"], "maxLength": 120},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "should_notify": {"type": "boolean", "description": "Model's opinion."},
+    "notified": {"type": "boolean", "description": "Server decision after confidence threshold + dedupe."},
+    "speaker_id": {"anyOf": [{"type": "string", "pattern": "^f[1-9][0-9]*$"}, {"const": "unknown"}]},
+    "related_caption_id": {"type": ["string", "null"], "format": "uuid"},
+    "source": {"enum": ["grok", "canned"]},
+    "input_kind": {"enum": ["live_camera", "demo_input", "glasses", "audio_only"]},
+    "model_version": {"type": "string", "minLength": 1}
+  }
+}
