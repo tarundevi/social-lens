@@ -46,9 +46,19 @@ def _as_event(scenario_id: str | None) -> dict:
             "input_kind": c["input_kind"], "model_version": c["model_version"]}
 
 
-@pytest.mark.parametrize("scenario_id", ["dinner", "sarcasm", "wave", None])
+@pytest.mark.parametrize("scenario_id", ["dinner", "sarcasm", "wave", None, "none"])
 def test_canned_wraps_into_valid_social_cue(scenario_id: str | None) -> None:
     assert CHECKER.errors(_as_event(scenario_id)) == []
+    assert CHECKER.errors(canned.get(scenario_id)["event"]) == []
+
+
+def test_canned_matches_backend_fixture_shape() -> None:
+    """app/main.py get_canned() reads canned["event"] and canned.get("hud") like a fixture."""
+    c = canned.get("wave")
+    assert {"event", "hud", "source", "latency_ms"} <= set(c)
+    assert c["event"]["cue"] == "Someone is waving at you" and c["event"]["notified"] is True
+    assert c["event"]["cue_id"] != canned.get("wave")["event"]["cue_id"]
+    assert canned.get("none")["event"]["notified"] is False
 
 
 def test_canned_metadata() -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -49,23 +50,43 @@ def scenarios() -> list[dict[str, Any]]:
 
 
 def get_output(scenario_id: str | None) -> dict[str, Any]:
-    """Just the SocialCueOutput for a scenario. None -> the 'none' output. Unknown id -> KeyError."""
-    if scenario_id is None:
+    """Just the SocialCueOutput for a scenario. None/"none" -> the 'none' output. Unknown -> KeyError."""
+    if scenario_id in (None, "none"):
         return copy.deepcopy(NONE_OUTPUT)
     return copy.deepcopy(_load()[scenario_id]["canned"])
 
 
-def get(scenario_id: str | None) -> dict[str, Any]:
-    """SocialCueOutput + metadata for wrapping into a social_cue event.
-
-    Returns {"output": SocialCueOutput, "source": "canned", "model_version": "canned-v0",
-    "input_kind": "demo_input", "t": default seconds (or None), "transcript": [...], "label": str}.
-    Unknown scenario_id raises KeyError.
-    """
-    row = _load()[scenario_id] if scenario_id is not None else {}
+def _event(output: dict[str, Any], t: float | None, session_id: str) -> dict[str, Any]:
+    """Wrap a SocialCueOutput as a schema-valid social_cue event (fresh cue_id each call)."""
     return {
-        "output": get_output(scenario_id),
+        "type": "social_cue", "session_id": session_id, "schema_version": "1.2",
+        "cue_id": str(uuid.uuid4()), "t": float(t or 0.0), **output,
+        "notified": bool(output["should_notify"] and output["confidence"] >= 0.6),
+        "speaker_id": "unknown", "related_caption_id": None, "source": SOURCE,
+        "input_kind": INPUT_KIND, "model_version": MODEL_VERSION,
+    }
+
+
+def get(scenario_id: str | None, session_id: str = "demo") -> dict[str, Any]:
+    """Canned AnalyzeResponse-shaped dict (same keys as contracts/fixtures/analyze_*.json) + metadata.
+
+    {"event": social_cue event, "hud": None (server builds it via app.cues.hud_for),
+     "source": "canned", "latency_ms": 0,
+     "output": SocialCueOutput, "model_version": "canned-v0", "input_kind": "demo_input",
+     "t": default seconds or None, "transcript": [...], "label": "Canned example (no API key)"}
+    scenario_id None or "none" -> the 'none' output. Unknown scenario_id raises KeyError.
+    The server should still re-run dedupe and set its own t/session_id; these are defaults.
+    """
+    if scenario_id == "none":
+        scenario_id = None
+    row = _load()[scenario_id] if scenario_id is not None else {}
+    output = get_output(scenario_id)
+    return {
+        "event": _event(output, row.get("t"), session_id),
+        "hud": None,
         "source": SOURCE,
+        "latency_ms": 0,
+        "output": output,
         "model_version": MODEL_VERSION,
         "input_kind": INPUT_KIND,
         "t": row.get("t"),
