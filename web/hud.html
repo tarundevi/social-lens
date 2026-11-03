@@ -10,12 +10,14 @@
 <div class="hud-stage">
   <div class="hud-panel hud-empty" id="panel"></div>
 </div>
+<script src="api.js"></script>
 <script type="module">
 import { renderHud } from "./hud.js";
 
 const panel = document.getElementById("panel");
 const statusEl = document.getElementById("status");
 const params = new URLSearchParams(location.search);
+const sessionId = params.get("session") || "sample";
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -27,43 +29,16 @@ function handleMessage(msg) {
   if (msg && msg.hud) renderHud(panel, msg.hud);
 }
 
-async function runMock() {
-  setStatus("mock replay");
-  const res = await fetch("mock/ws_stream.jsonl");
-  const text = await res.text();
-  const lines = text.trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
-  let t = 0;
-  for (const line of lines) {
-    t += line._delay_ms || 0;
-    setTimeout(() => handleMessage(line), t);
-  }
-}
+// window.SocialLensApi (api.js) owns the mock-vs-live switch (its own ?mock=1
+// check) and the WS/replay transport, so a live session here mirrors the same
+// cues live.html shows, and a mock session replays contracts/fixtures/ws_stream.jsonl.
+setStatus(window.SocialLensApi.MOCK ? "mock replay" : `connecting to ${sessionId}…`);
+const handle = window.SocialLensApi.openWs(sessionId, (msg) => {
+  setStatus(window.SocialLensApi.MOCK ? "mock replay" : `session ${sessionId}`);
+  handleMessage(msg);
+});
 
-function runWs(sessionId) {
-  const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
-  const replay = params.get("replay") || "1";
-  const speed = params.get("speed") || "1.0";
-  const url = `${wsProto}//${location.host}/ws/sessions/${sessionId}?replay=${replay}&speed=${speed}`;
-  setStatus("connecting…");
-  const ws = new WebSocket(url);
-  ws.onopen = () => setStatus(`session ${sessionId}`);
-  ws.onmessage = (ev) => {
-    try {
-      handleMessage(JSON.parse(ev.data));
-    } catch (err) {
-      console.error("bad ws message", err);
-    }
-  };
-  ws.onerror = () => setStatus("ws error");
-  ws.onclose = () => setStatus("disconnected");
-}
-
-if (params.get("mock") === "1") {
-  runMock();
-} else {
-  const sessionId = params.get("session") || "sample";
-  runWs(sessionId);
-}
+window.addEventListener("beforeunload", () => handle.close());
 </script>
 </body>
 </html>
