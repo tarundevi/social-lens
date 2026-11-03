@@ -25,6 +25,7 @@ struct CameraView: View {
   @State private var viewModel: CameraViewModel
   @Bindable var wearablesVM: WearablesViewModel
   @State private var showSettingsMenu: Bool = false
+  @State private var showSocialLensSettings: Bool = false
   @State private var isLaunchingUpdate: Bool = false
 
   init(wearables: WearablesInterface, wearablesVM: WearablesViewModel) {
@@ -101,6 +102,48 @@ struct CameraView: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("To preview your glasses camera, you'll be taken to the Meta AI app to grant access, then returned here.")
+    }
+    .sheet(isPresented: $showSocialLensSettings) {
+      NavigationStack {
+        Form {
+          Section("Backend") {
+            TextField("Base URL", text: Binding(
+              get: { viewModel.socialLens.baseURLString },
+              set: { viewModel.socialLens.baseURLString = $0 }
+            ))
+            .textInputAutocapitalization(.never)
+            .keyboardType(.URL)
+            .autocorrectionDisabled()
+            Toggle("Analyze while streaming", isOn: Binding(
+              get: { viewModel.socialLens.isEnabled },
+              set: { viewModel.socialLens.isEnabled = $0 }
+            ))
+            Button("Apply URL") {
+              viewModel.socialLens.applyBaseURL()
+            }
+          }
+          Section("Status") {
+            Text(viewModel.socialLens.statusText)
+            if let ms = viewModel.socialLens.lastLatencyMs {
+              Text("Last latency: \(ms) ms")
+            }
+            if !viewModel.socialLens.lastCueText.isEmpty {
+              Text("Last cue: \(viewModel.socialLens.lastCueText)")
+            }
+          }
+          Section {
+            Text("Phone and Mac must be on the same Wi‑Fi. Run: uvicorn app.main:app --host 0.0.0.0 --port 8000")
+              .font(.footnote)
+          }
+        }
+        .navigationTitle("SocialLens")
+        .toolbar {
+          ToolbarItem(placement: .confirmationAction) {
+            Button("Done") { showSocialLensSettings = false }
+          }
+        }
+      }
+      .presentationDetents([.medium, .large])
     }
     .navigationBarHidden(true)
   }
@@ -224,9 +267,26 @@ struct CameraView: View {
       VStack(alignment: .leading, spacing: 6) {
         statusChip(label: "Session", value: viewModel.sessionStateText, active: viewModel.isSessionActive, present: viewModel.hasSession)
         statusChip(label: "Stream", value: viewModel.streamStateText, active: viewModel.isStreaming, present: viewModel.hasStream)
+        if viewModel.socialLens.captureActive {
+          statusChip(label: "Capturing", value: "camera→SocialLens", active: true, present: true)
+        }
+        Text(viewModel.socialLens.statusText)
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(Color.white.opacity(0.75))
+          .lineLimit(2)
+        if !viewModel.socialLens.lastCueText.isEmpty {
+          Text(viewModel.socialLens.lastCueText)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Color.cyan)
+            .lineLimit(3)
+        }
       }
 
       Spacer()
+
+      iconButton("server.rack", id: "sociallens_settings_button") {
+        showSocialLensSettings = true
+      }
 
       // Top bar carries only the app-level settings/Disconnect control.
       iconButton("gearshape", id: "settings_button") {
