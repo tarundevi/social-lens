@@ -1,0 +1,28 @@
+[
+  {
+    "id": "dinner",
+    "title": "Dinner invite",
+    "image": "demo/dinner.jpg",
+    "transcript": [
+      "[0:10] Someone: hey",
+      "[0:12] Someone: Vaibhav, want to come to dinner Friday?"
+    ],
+    "canned": "analyze_dinner.json"
+  },
+  {
+    "id": "sarcasm",
+    "title": "Sarcasm",
+    "image": "demo/sarcasm.jpg",
+    "transcript": [
+      "[0:40] Someone: Oh great, another three-hour meeting."
+    ],
+    "canned": "analyze_sarcasm.json"
+  },
+  {
+    "id": "wave",
+    "title": "Wave greeting",
+    "image": "demo/wave.jpg",
+    "transcript": [],
+    "canned": "analyze_wave.json"
+  }
+]
