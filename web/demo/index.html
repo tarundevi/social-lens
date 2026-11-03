@@ -14,11 +14,15 @@
 <h1>SocialLens: Demo mode</h1>
 <p class="note">Scripted DEMO INPUT scenarios (drawn placeholders, no camera). Add <code>?mock=1</code> to run without the backend.</p>
 <div id="demo"></div>
+<h2 style="font-size:16px">HUD</h2>
+<div id="hud"></div>
+<script src="../api.js"></script>
 <script type="module">
   import { mountDemo } from "../demo.js";
 
-  // Standalone harness for web/demo.js. Prefers C2's web/api.js once it exists; otherwise a
-  // minimal client that follows API_SPEC.md (real backend) or CONTRACTS.md mock mode (?mock=1).
+  // Standalone page for web/demo.js. Uses C2's web/api.js (window.SocialLensApi: real backend,
+  // or fixtures with ?mock=1) and C3's renderHud from web/hud.js. If either is missing it falls
+  // back to a minimal API_SPEC.md client and a plain-text HUD.
   const MOCK = new URLSearchParams(location.search).get("mock") === "1";
   const root = new URL("../../", import.meta.url);
 
@@ -48,13 +52,16 @@
           body: JSON.stringify(req) }),
   };
 
-  let api = fallbackApi;
+  const api = window.SocialLensApi?.analyze ? window.SocialLensApi : fallbackApi;
+  let renderHud = (el, hud) => { el.textContent = hud ? `${hud.text}${hud.reply ? " · Say: " + hud.reply : ""}` : ""; };
   try {
-    const mod = await import("../api.js");
-    if (typeof mod.analyze === "function" && typeof mod.health === "function") api = mod;
-  } catch { /* api.js not merged yet */ }
+    renderHud = (await import("../hud.js")).renderHud ?? renderHud;
+  } catch { /* hud.js not available */ }
 
-  window.demo = mountDemo(document.getElementById("demo"), api);
+  const demoEl = document.getElementById("demo");
+  const hudEl = document.getElementById("hud");
+  demoEl.addEventListener("demo:result", (e) => { if (e.detail?.hud) renderHud(hudEl, e.detail.hud); });
+  window.demo = mountDemo(demoEl, api);
 </script>
 </body>
 </html>
