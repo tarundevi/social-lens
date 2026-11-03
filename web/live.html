@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SocialLens — Live</title>
+  <link rel="stylesheet" href="app.css" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #4fc3f7;
+      --danger: #ef5350;
+      --ok: #66bb6a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #243044;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.1rem; margin: 0; font-weight: 600; }
+    header nav a { color: var(--accent); margin-left: 0.75rem; text-decoration: none; }
+    header nav a:hover { text-decoration: underline; }
+    #banner {
+      display: none;
+      background: #3e2723;
+      color: #ffcc80;
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+    }
+    #banner.visible { display: block; }
+    #consent {
+      max-width: 32rem;
+      margin: 3rem auto;
+      padding: 1.5rem;
+      background: var(--panel);
+      border-radius: 12px;
+    }
+    #consent h2 { margin-top: 0; }
+    #consent p { color: var(--muted); line-height: 1.5; }
+    #consent label { display: flex; gap: 0.5rem; align-items: flex-start; margin: 1rem 0; }
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-size: 0.95rem;
+      background: var(--accent);
+      color: #062033;
+      font-weight: 600;
+    }
+    button.secondary { background: #334155; color: var(--text); }
+    button.danger { background: var(--danger); color: #fff; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #app { display: none; padding: 1rem; }
+    #app.active { display: block; }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+    .panel {
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 0.75rem;
+      min-height: 12rem;
+    }
+    .panel h3 { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    #previewWrap { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; }
+    #preview { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #captureBadge {
+      display: none;
+      position: absolute;
+      top: 0.6rem;
+      left: 0.6rem;
+      background: rgba(0,0,0,0.7);
+      color: var(--danger);
+      font-weight: 700;
+      font-size: 0.85rem;
+      padding: 0.35rem 0.6rem;
+      border-radius: 999px;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    #captureBadge.visible { display: inline-flex; }
+    #controls { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+    #transcript {
+      white-space: pre-wrap;
+      font-family: ui-monospace, Menlo, monospace;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      max-height: 16rem;
+      overflow: auto;
+      color: var(--text);
+    }
+    #interim { color: var(--muted); font-style: italic; }
+    #chromeWarn {
+      display: none;
+      color: #ffcc80;
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+    #chromeWarn.visible { display: block; }
+    #cueList { list-style: none; margin: 0; padding: 0; }
+    #cueList li {
+      border-left: 3px solid var(--accent);
+      padding: 0.5rem 0.6rem;
+      margin-bottom: 0.5rem;
+      background: #121a24;
+      border-radius: 0 8px 8px 0;
+    }
+    #cueList .meta { color: var(--muted); font-size: 0.75rem; }
+    #hudBox {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      border-radius: 8px;
+      background: #0b1220;
+      border: 1px solid #243044;
+      min-height: 3rem;
+    }
+    #latency { color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem; }
+    #toasts {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 50;
+      max-width: 22rem;
+    }
+    .toast {
+      background: #3e2723;
+      color: #ffe0b2;
+      padding: 0.7rem 0.9rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      font-size: 0.9rem;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SocialLens Live</h1>
+    <nav>
+      <a href="demo.html">Demo</a>
+      <a href="recap.html">Recap</a>
+      <a href="hud.html">HUD</a>
+    </nav>
+  </header>
+  <div id="banner" role="status"></div>
+
+  <section id="consent">
+    <h2>Camera &amp; mic consent</h2>
+    <p>
+      Live mode uses your phone/laptop camera and microphone as a stand-in for smart glasses.
+      Frames and audio are analyzed in memory only — nothing is written to disk.
+      No face recognition or emotion-from-face.
+    </p>
+    <label>
+      <input type="checkbox" id="consentCheck" />
+      <span>I understand and allow camera + microphone access for this session.</span>
+    </label>
+    <button id="startBtn" type="button" disabled>Start live session</button>
+  </section>
+
+  <main id="app">
+    <div class="layout">
+      <div class="panel">
+        <h3>Phone/laptop camera (stand-in for glasses)</h3>
+        <div id="previewWrap">
+          <video id="preview" playsinline autoplay muted></video>
+          <div id="captureBadge" aria-live="polite">● Capturing camera + mic</div>
+        </div>
+        <canvas id="frameCanvas" class="hidden"></canvas>
+        <div id="controls">
+          <button id="stopBtn" type="button" class="danger">Stop</button>
+          <button id="discardBtn" type="button" class="secondary hidden">Discard session</button>
+        </div>
+        <div id="latency"></div>
+      </div>
+      <div class="panel">
+        <h3>Transcript (rolling 30s)</h3>
+        <div id="chromeWarn">Speech recognition needs Chrome (webkitSpeechRecognition).</div>
+        <div id="transcript"></div>
+        <div id="interim"></div>
+      </div>
+    </div>
+    <div class="layout" style="margin-top:1rem">
+      <div class="panel">
+        <h3>Cues</h3>
+        <ul id="cueList"></ul>
+      </div>
+      <div class="panel">
+        <h3>HUD</h3>
+        <div id="hudBox"></div>
+      </div>
+    </div>
+  </main>
+
+  <div id="toasts" aria-live="polite"></div>
+
+  <script src="api.js"></script>
+  <script src="hud.js"></script>
+  <script src="live.js"></script>
+</body>
+</html>
