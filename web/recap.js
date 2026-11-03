@@ -154,3 +154,92 @@ export function replay(events, onEvent, { speed = 4 } = {}) {
     setTimeout(() => onEvent(e), delay);
   }
 }
+
+const SOURCE_LABEL = { grok: "Grok", heuristic: "Rule-based", canned: "Canned" };
+
+function recapSection(title, bodyEl) {
+  const wrap = document.createElement("div");
+  wrap.className = "recap-subsection";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  wrap.append(heading, bodyEl);
+  return wrap;
+}
+
+function recapList(items, renderItem) {
+  const ul = document.createElement("ul");
+  if (!items || items.length === 0) {
+    const li = document.createElement("li");
+    li.className = "recap-empty";
+    li.textContent = "None";
+    ul.appendChild(li);
+    return ul;
+  }
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.appendChild(renderItem(item));
+    ul.appendChild(li);
+  }
+  return ul;
+}
+
+/** Render the catch-me-up response without replacing the timeline UI. */
+export function renderRecap(container, response) {
+  container.innerHTML = "";
+  const badge = document.createElement("span");
+  badge.className = "source-badge source-" + response.source;
+  badge.textContent = SOURCE_LABEL[response.source] || response.source;
+  container.appendChild(badge);
+
+  if (response.message) {
+    const message = document.createElement("div");
+    message.className = "recap-message";
+    message.textContent = response.message;
+    container.appendChild(message);
+  }
+
+  const recap = response.recap;
+  const summary = document.createElement("p");
+  summary.textContent = recap.overall_summary;
+  container.appendChild(recapSection("Summary", summary));
+
+  container.appendChild(recapSection("Addressed to you", recapList(recap.addressed_to_you, (item) => {
+    const el = document.createElement("div");
+    const time = document.createElement("span");
+    time.className = "caption-time";
+    time.textContent = item.t;
+    const text = document.createElement("span");
+    text.textContent = `${item.speaker}: "${item.quote}" — needs: ${item.what_they_need}`;
+    el.append(time, text);
+    return el;
+  })));
+
+  const textList = (items, format) => recapList(items, (item) => {
+    const el = document.createElement("span");
+    el.textContent = format(item);
+    return el;
+  });
+  container.appendChild(recapSection("Per speaker", textList(recap.per_speaker, (item) => `${item.speaker}: ${item.summary}`)));
+  container.appendChild(recapSection("Action items", textList(recap.action_items, (item) => `${item.owner}: ${item.item}` + (item.due ? ` (due ${item.due})` : ""))));
+  container.appendChild(recapSection("Tone highlights", textList(recap.tone_highlights, (item) => `${item.t} ${item.speaker} ${item.tone} — ${item.note}`)));
+
+  const disclaimer = document.createElement("p");
+  disclaimer.className = "recap-disclaimer";
+  disclaimer.textContent = recap.disclaimer;
+  container.appendChild(disclaimer);
+}
+
+export async function fetchRecap(sessionId, { mockFixtureUrl } = {}) {
+  if (mockFixtureUrl) {
+    const response = await fetch(mockFixtureUrl);
+    if (!response.ok) throw new Error(`recap fixture failed: ${response.status}`);
+    return response.json();
+  }
+  const response = await fetch("/api/recap", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  if (!response.ok) throw new Error(`recap failed: ${response.status}`);
+  return response.json();
+}
