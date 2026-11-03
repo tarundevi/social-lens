@@ -129,6 +129,26 @@
     });
   }
 
+  async function stt(blob) {
+    if (MOCK) return { text: "" };
+    const fd = new FormData();
+    fd.append("file", blob, "chunk.webm");
+    const res = await fetch(`${API_BASE}/api/stt`, { method: "POST", body: fd });
+    if (!res.ok) {
+      let body = null;
+      try {
+        body = await res.json();
+      } catch (_) {
+        /* ignore */
+      }
+      const err = new Error(errorMessage(body, res.statusText || String(res.status)));
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
+    return res.json();
+  }
+
   /**
    * Open a session websocket. Returns a handle with .close().
    * In mock mode, replays contracts/fixtures/ws_stream.jsonl using _delay_ms.
@@ -213,6 +233,7 @@
     analyze,
     events,
     recap,
+    stt,
     openWs,
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -43,6 +43,12 @@
     recentCues: [],
     seenCueIds: new Set(),
     stopped: false,
+    speechNetworkFails: 0,
+    speechDisabled: false,
+    lastToastAt: 0,
+    mediaRecorder: null,
+    micStream: null,
+    sttBusy: false,
   };
 
   const textOnlyBtn = document.getElementById("textOnlyBtn");
@@ -55,6 +61,8 @@
 
   function resetSessionLocal() {
     state.stopped = false;
+    state.speechDisabled = false;
+    state.speechNetworkFails = 0;
     state.sessionId = null;
     state.startedAt = performance.now();
     state.finals = [];
@@ -63,13 +71,13 @@
     els.cueList.innerHTML = "";
     els.transcript.textContent = "";
     els.interim.textContent = "";
+    els.toasts.innerHTML = "";
     renderHud(null);
   }
 
-  // SpeechRecognition.start() MUST run inside the click stack (before any await).
   els.startBtn.addEventListener("click", () => {
     resetSessionLocal();
-    startSpeech(); // sync — keeps user-gesture / mic permission
+    // Prefer xAI STT via MediaRecorder (works when Chrome→Google STT is blocked).
     startSession({ camera: true }).catch(onFatal);
   });
   if (textOnlyBtn) {
@@ -137,7 +145,10 @@
       toast("Backend not reachable. Start: uvicorn app.main:app --port 8000 — then open http://localhost:8000/web/live.html");
     });
 
-  function toast(msg) {
+  function toast(msg, { force } = {}) {
+    const now = Date.now();
+    if (!force && now - state.lastToastAt < 2500) return; // prevent toast storms
+    state.lastToastAt = now;
     const el = document.createElement("div");
     el.className = "toast";
     el.textContent = msg;
@@ -282,18 +293,16 @@
       });
 
       if (camera) {
-        // Restart speech now that session exists (in case the primed one died).
-        if (!state.recognition) startSpeech();
+        await startXaiStt(); // mic → /api/stt (bypasses broken Chrome→Google STT)
         startFrameLoop();
         setTimeout(() => {
           if (!state.stopped && state.finals.length === 0) {
             els.chromeWarn.classList.add("visible");
             els.chromeWarn.textContent =
-              "Still no speech text. Use the box below — waiting will not help.";
-            toast("Type a line and press Enter to see transcript + cues.");
+              "No transcript yet — keep speaking, or type below.";
             typeInput?.focus();
           }
-        }, 3000);
+        }, 8000);
       } else {
         els.chromeWarn.classList.add("visible");
         els.chromeWarn.textContent =
@@ -350,10 +359,92 @@
     }
   }
 
+  function stopXaiStt() {
+    try {
+      if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
+        state.mediaRecorder.ondataavailable = null;
+        state.mediaRecorder.stop();
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    state.mediaRecorder = null;
+    if (state.micStream) {
+      state.micStream.getTracks().forEach((t) => t.stop());
+      state.micStream = null;
+    }
+  }
+
+  async function startXaiStt() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      disableSpeech("No mic API — type below.");
+      return;
+    }
+    try {
+      const mic = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          channelCount: 1,
+        },
+        video: false,
+      });
+      state.micStream = mic;
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const rec = new MediaRecorder(mic, { mimeType: mime, audioBitsPerSecond: 64000 });
+      state.mediaRecorder = rec;
+
+      rec.ondataavailable = (ev) => {
+        if (!ev.data || ev.data.size < 1000 || state.stopped || state.sttBusy) return;
+        void handleSttChunk(ev.data);
+      };
+      rec.onerror = (ev) => {
+        console.warn("[MediaRecorder]", ev);
+        toast("Mic recorder error — type below.", { force: true });
+      };
+
+      // Timeslice ~2.5s chunks for near-live captions
+      rec.start(2500);
+      els.chromeWarn.classList.add("visible");
+      els.chromeWarn.textContent =
+        "Listening via xAI STT (not Google). Speak clearly; text appears every few seconds.";
+      els.interim.textContent = "(listening via xAI)";
+      console.log("[stt] MediaRecorder started", mime);
+    } catch (err) {
+      console.error("[stt] mic failed", err);
+      disableSpeech("Mic permission denied for STT. Allow mic, or type below.");
+    }
+  }
+
+  async function handleSttChunk(blob) {
+    if (!state.sessionId || state.stopped) return;
+    state.sttBusy = true;
+    els.interim.textContent = "(transcribing…)";
+    try {
+      const res = await api.stt(blob);
+      const text = (res && res.text ? String(res.text) : "").trim();
+      if (!text) {
+        els.interim.textContent = "(listening via xAI)";
+        return;
+      }
+      injectCaption(text);
+      els.interim.textContent = "(listening via xAI)";
+    } catch (err) {
+      console.error("[stt]", err);
+      els.interim.textContent = "(STT error — type below works)";
+      toast(`STT: ${(err && err.message) || err}`, { force: false });
+    } finally {
+      state.sttBusy = false;
+    }
+  }
+
   function stopCapture({ offerDiscard }) {
     state.stopped = true;
     stopFrameLoop();
     stopSpeech();
+    stopXaiStt();
     if (state.ws) {
       state.ws.close();
       state.ws = null;
@@ -384,15 +475,24 @@
     els.interim.textContent = "";
   }
 
+  function disableSpeech(reason) {
+    state.speechDisabled = true;
+    stopSpeech();
+    els.chromeWarn.classList.add("visible");
+    els.chromeWarn.textContent = reason;
+    els.interim.textContent = "";
+    toast(reason, { force: true });
+    typeInput?.focus();
+  }
+
   function startSpeech() {
+    if (state.speechDisabled || state.stopped) return;
+
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
-      els.chromeWarn.classList.add("visible");
-      els.chromeWarn.textContent =
-        "This browser has no SpeechRecognition. Use Google Chrome, or type below.";
+      disableSpeech("No SpeechRecognition in this browser. Type below (manual text works).");
       return;
     }
-    // Tear down any prior instance
     stopSpeech();
 
     const rec = new SR();
@@ -402,12 +502,14 @@
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
+      state.speechNetworkFails = 0;
       els.chromeWarn.classList.add("visible");
-      els.chromeWarn.textContent = "Listening… speak clearly, or type below if nothing appears.";
+      els.chromeWarn.textContent = "Listening… (Chrome→Google STT). If this fails, type below.";
       els.interim.textContent = "(listening)";
     };
 
     rec.onresult = (ev) => {
+      state.speechNetworkFails = 0;
       let interim = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const r = ev.results[i];
@@ -444,23 +546,30 @@
         els.interim.textContent = "(no speech heard — keep talking or type below)";
         return;
       }
+      if (ev.error === "network" || ev.error === "service-not-allowed" || ev.error === "not-allowed") {
+        state.speechNetworkFails += 1;
+        // Chrome Web Speech calls Google's cloud STT. VPN/firewall/offline → network.
+        // Stop restart loop after 1 failure so we don't spam toasts.
+        disableSpeech(
+          "Live mic STT blocked (Chrome→Google network error). Manual type box works — use that. Fix: disable VPN, allow Google, or chrome://settings/content/microphone"
+        );
+        return;
+      }
       els.chromeWarn.classList.add("visible");
-      els.chromeWarn.textContent = `Speech error: ${ev.error}. Type a line below to continue.`;
-      toast(`Speech error: ${ev.error}`);
+      els.chromeWarn.textContent = `Speech error: ${ev.error}. Type below.`;
     };
 
     rec.onend = () => {
       state.recognition = null;
-      if (state.stopped) return;
-      // Restart even without camera tracks (speech should keep running).
+      if (state.stopped || state.speechDisabled) return;
       setTimeout(() => {
-        if (state.stopped || state.recognition) return;
+        if (state.stopped || state.speechDisabled || state.recognition) return;
         try {
           startSpeech();
         } catch (_) {
           /* ignore */
         }
-      }, 250);
+      }, 400);
     };
 
     state.recognition = rec;
@@ -469,9 +578,7 @@
       console.log("[speech] started");
     } catch (err) {
       console.error("[speech] start failed", err);
-      els.chromeWarn.classList.add("visible");
-      els.chromeWarn.textContent = "Could not start speech. Type below instead.";
-      toast("Could not start speech recognition — use the type box.");
+      disableSpeech("Could not start speech recognition. Type below (manual text works).");
     }
   }
 
