@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>SocialLens Recap</title>
 <link rel="stylesheet" href="app.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body class="recap-page">
 <div class="recap-header">
@@ -42,19 +42,31 @@ function unwrap(line) {
   return line.event ? Object.assign({}, line.event, { _replay_t: line._replay_t }) : line;
 }
 
-async function loadEvents() {
-  if (sessionId === "sample") {
-    const [sessionText, speakersRes] = await Promise.all([
-      fetch("mock/sample_session.jsonl").then((r) => r.text()),
-      fetch("mock/speakers.json").then((r) => r.json()),
-    ]);
-    return { events: parseJsonl(sessionText).map(unwrap), speakers: speakersRes };
-  }
-  const [eventsRes, speakersRes] = await Promise.all([
-    fetch(`/api/sessions/${sessionId}/events`).then((r) => r.json()),
-    fetch("mock/speakers.json").then((r) => r.json()).catch(() => ({ speakers: {} })),
+const MOCK = params.get("mock") === "1";
+
+async function loadMockSample() {
+  const [sessionText, speakersRes] = await Promise.all([
+    fetch("mock/sample_session.jsonl").then((r) => r.text()),
+    fetch("mock/speakers.json").then((r) => r.json()),
   ]);
-  return { events: (eventsRes.events || []).map(unwrap), speakers: speakersRes };
+  return { events: parseJsonl(sessionText).map(unwrap), speakers: speakersRes };
+}
+
+async function loadEvents() {
+  // Real backend first (GET /api/sessions/sample/events serves data/sample_session.jsonl,
+  // including its social_cue events). Static mock copy only with ?mock=1 or if the API is down.
+  if (MOCK) return loadMockSample();
+  try {
+    const r = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`);
+    if (!r.ok) throw new Error(`events ${r.status}`);
+    const eventsRes = await r.json();
+    const speakersRes = await fetch("mock/speakers.json").then((x) => x.json()).catch(() => ({ speakers: {} }));
+    return { events: (eventsRes.events || []).map(unwrap), speakers: speakersRes };
+  } catch (err) {
+    if (sessionId !== "sample") throw err;
+    console.warn("[recap] API unavailable, using mock sample", err);
+    return loadMockSample();
+  }
 }
 
 let state = { events: [], speakers: {} };
@@ -94,15 +106,20 @@ document.getElementById("replay-btn").addEventListener("click", () => {
   });
 });
 
-// "Catch me up" summary panel is wired up in a later task (C4); this button
-// is a no-op placeholder until then.
 document.getElementById("catchup-btn").addEventListener("click", async () => {
   statusEl.textContent = "Loading catch-me-up…";
   try {
-    const options = params.get("mock") === "1" || sessionId === "sample"
-      ? { mockFixtureUrl: "mock/recap.json" }
-      : {};
-    renderRecap(catchupPanel, await fetchRecap(sessionId, options));
+    let recap;
+    if (MOCK) {
+      recap = await fetchRecap(sessionId, { mockFixtureUrl: "mock/recap.json" });
+    } else {
+      // POST /api/recap: Grok with a key, labeled heuristic without one.
+      recap = await fetchRecap(sessionId).catch((err) => {
+        if (sessionId !== "sample") throw err;
+        return fetchRecap(sessionId, { mockFixtureUrl: "mock/recap.json" });
+      });
+    }
+    renderRecap(catchupPanel, recap);
     statusEl.textContent = `session: ${sessionId}`;
   } catch (error) {
     statusEl.textContent = `catch-me-up failed: ${error}`;

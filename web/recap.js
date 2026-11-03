@@ -82,6 +82,17 @@ export function buildToneChart(canvas, events) {
     tension: 0.3,
     pointRadius: 2,
   }));
+  // Chart.js comes from a CDN; offline (demo with Wi-Fi off) it is missing. Skip the chart, keep the page.
+  if (typeof Chart === "undefined") {
+    const note = canvas.parentElement?.querySelector(".chart-offline");
+    if (!note && canvas.parentElement) {
+      const p = document.createElement("p");
+      p.className = "chart-offline recap-status";
+      p.textContent = "Tone chart unavailable offline (Chart.js not loaded).";
+      canvas.parentElement.appendChild(p);
+    }
+    return null;
+  }
   // eslint-disable-next-line no-undef
   return new Chart(canvas, {
     type: "line",
